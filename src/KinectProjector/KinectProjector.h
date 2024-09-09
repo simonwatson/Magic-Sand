@@ -59,47 +59,47 @@ public:
 
     // Coordinate conversion functions
     ofVec2f worldCoordToProjCoord(ofVec3f vin);
-	ofVec3f projCoordAndWorldZToWorldCoord(float projX, float projY, float worldZ);
-	ofVec2f kinectCoordToProjCoord(float x, float y);
-	ofVec2f kinectCoordToProjCoord(float x, float y, float z);
-	
-	ofVec3f kinectCoordToWorldCoord(float x, float y);
-	ofVec2f worldCoordTokinectCoord(ofVec3f wc);
-	ofVec3f RawKinectCoordToWorldCoord(float x, float y);
+    ofVec3f projCoordAndWorldZToWorldCoord(float projX, float projY, float worldZ);
+    ofVec2f kinectCoordToProjCoord(float x, float y);
+    ofVec2f kinectCoordToProjCoord(float x, float y, float z);
+    
+    ofVec3f kinectCoordToWorldCoord(float x, float y);
+    ofVec2f worldCoordTokinectCoord(ofVec3f wc);
+    ofVec3f RawKinectCoordToWorldCoord(float x, float y);
     float elevationAtKinectCoord(float x, float y);
     float elevationToKinectDepth(float elevation, float x, float y);
     ofVec2f gradientAtKinectCoord(float x, float y);
 
-	// Try to start the application - assumes calibration has been done before
-	void startApplication();
+    // Try to start the application - assumes calibration has been done before
+    void startApplication();
 
-	// Setup & calibration functions
+    // Setup & calibration functions
     void startFullCalibration();
     void startAutomaticROIDetection();
     void startAutomaticKinectProjectorCalibration();
     void setGradFieldResolution(int gradFieldResolution);
-	void updateStatusGUI();
-	void setSpatialFiltering(bool sspatialFiltering);
-	void setInPainting(bool inp);
-	void setFullFrameFiltering(bool ff);	
-	
-	void setFollowBigChanges(bool sfollowBigChanges);
-	void StartManualROIDefinition();
-	void ResetSeaLevel();
-	void showROIonProjector(bool show);
+    void updateStatusGUI();
+    void setSpatialFiltering(bool sspatialFiltering);
+    void setInPainting(bool inp);
+    void setFullFrameFiltering(bool ff);
+    
+    void setFollowBigChanges(bool sfollowBigChanges);
+    void StartManualROIDefinition();
+    void ResetSeaLevel();
+    void showROIonProjector(bool show);
 
     // Gui and event functions
     void setupGui();
     void onButtonEvent(ofxDatGuiButtonEvent e);
 
-	void onToggleEvent(ofxDatGuiToggleEvent e);
+    void onToggleEvent(ofxDatGuiToggleEvent e);
     void onSliderEvent(ofxDatGuiSliderEvent e);
     void onConfirmModalEvent(ofxModalEvent e);
     void onCalibModalEvent(ofxModalEvent e);
 
-	void mousePressed(int x, int y, int button);
-	void mouseReleased(int x, int y, int button);
-	void mouseDragged(int x, int y, int button);
+    void mousePressed(int x, int y, int button);
+    void mouseReleased(int x, int y, int button);
+    void mouseDragged(int x, int y, int button);
 
     // Functions for shaders
     void bind(){
@@ -114,8 +114,8 @@ public:
     ofMatrix4x4 getTransposedKinectProjMatrix(){
         return kinectProjMatrix.getTransposedOf(kinectProjMatrix);
     }
-	// Depending on the mount direction of the Kinect, projections can be flipped. 
-	bool getProjectionFlipped();
+    // Depending on the mount direction of the Kinect, projections can be flipped.
+    bool getProjectionFlipped();
 
 
     // Getter and setter
@@ -138,13 +138,13 @@ public:
         return basePlaneOffset;
     }
 
-	// Get the ROI of the projector window that should match the Kinect ROI
-	ofRectangle getProjectorActiveROI();
+    // Get the ROI of the projector window that should match the Kinect ROI
+    ofRectangle getProjectorActiveROI();
 
-	// Map Game interface
-	bool getBinaryLandImage(ofxCvGrayscaleImage& BinImg);
+    // Map Game interface
+    bool getBinaryLandImage(ofxCvGrayscaleImage& BinImg);
 
-	bool isCalibrated(){
+    bool isCalibrated(){
         return projKinectCalibrated;
     }
     bool isImageStabilized(){
@@ -160,25 +160,29 @@ public:
         return projKinectCalibrationUpdated;
     }
 
-	// The overall application stat
-	enum Application_state
-	{
-		APPLICATION_STATE_IDLE,
-		APPLICATION_STATE_SETUP,  // Shows depth image and display white rectangle on projector
-		APPLICATION_STATE_CALIBRATING,
-		APPLICATION_STATE_RUNNING
-	};
+    // The overall application stat
+    enum Application_state
+    {
+        APPLICATION_STATE_IDLE,
+        APPLICATION_STATE_SETUP,  // Shows depth image and display white rectangle on projector
+        APPLICATION_STATE_CALIBRATING,
+        APPLICATION_STATE_RUNNING
+    };
 
-	Application_state GetApplicationState()
-	{
-		return applicationState;
-	}
+    Application_state GetApplicationState()
+    {
+        return applicationState;
+    }
 
-	bool getDumpDebugFiles();
+    bool getDumpDebugFiles();
 
-	// Debug functions
-	void SaveFilteredDepthImage();
-	void SaveKinectColorImage();
+    // Debug functions
+    void SaveFilteredDepthImage();
+    void SaveKinectColorImage();
+
+    //STH moved to SandSurfaceRendered.h
+    // // ROI image export function
+    // void SaveROIImage();
 
 private:
 
@@ -187,8 +191,8 @@ private:
         CALIBRATION_STATE_FULL_AUTO_CALIBRATION,
         CALIBRATION_STATE_ROI_AUTO_DETERMINATION,
         CALIBRATION_STATE_ROI_MANUAL_DETERMINATION,
-		CALIBRATION_STATE_ROI_FROM_FILE,
-		CALIBRATION_STATE_PROJ_KINECT_AUTO_CALIBRATION,
+        CALIBRATION_STATE_ROI_FROM_FILE,
+        CALIBRATION_STATE_PROJ_KINECT_AUTO_CALIBRATION,
         CALIBRATION_STATE_PROJ_KINECT_MANUAL_CALIBRATION
     };
     enum Full_Calibration_state
@@ -223,20 +227,20 @@ private:
     void updateROIAutoCalibration();
     void updateROIFromColorImage();
     void updateROIFromDepthImage();
-	void updateROIFromFile();
-	
-//	void updateROIManualCalibration();
+    void updateROIFromFile();
+    
+//    void updateROIManualCalibration();
     void updateROIFromCalibration();
     void setMaxKinectGrabberROI();
     void setNewKinectROI();
     void updateKinectGrabberROI(ofRectangle ROI);
 
-	void updateProjKinectAutoCalibration();
+    void updateProjKinectAutoCalibration();
 
-	double ComputeReprojectionError(bool WriteFile);
-	void CalibrateNextPoint();
+    double ComputeReprojectionError(bool WriteFile);
+    void CalibrateNextPoint();
 
-	void updateProjKinectManualCalibration();
+    void updateProjKinectManualCalibration();
     bool addPointPair();
     void updateMaxOffset();
     void updateBasePlane();
@@ -249,46 +253,46 @@ private:
     bool loadSettings();
     bool saveSettings();
     
-	void ProcessChessBoardInput(ofxCvGrayscaleImage& image);
-	void CheckAndNormalizeKinectROI();
+    void ProcessChessBoardInput(ofxCvGrayscaleImage& image);
+    void CheckAndNormalizeKinectROI();
 
     // State variables
-    bool secondScreenFound;
-	bool kinectOpened;
-	float lastKinectOpenTry;
-	bool ROIcalibrated;
+    //bool secondScreenFound; //is this used? 20 Feb 2024 STH
+    bool kinectOpened;
+    float lastKinectOpenTry;
+    bool ROIcalibrated;
     bool projKinectCalibrated;
 //    bool ROIUpdated;
     bool projKinectCalibrationUpdated;
-	bool basePlaneComputed;
+    bool basePlaneComputed;
     bool basePlaneUpdated;
     bool imageStabilized;
     bool waitingForFlattenSand;
     bool drawKinectView;
-	bool drawKinectColorView;
+    bool drawKinectColorView;
     Calibration_state calibrationState;
     ROI_calibration_state ROICalibState;
     Auto_calibration_state autoCalibState;
     Full_Calibration_state fullCalibState;
-	Application_state applicationState;
+    Application_state applicationState;
 
     // Projector window
     std::shared_ptr<ofAppBaseWindow> projWindow;
     
     //kinect grabber
-    KinectGrabber               kinectgrabber;
+    KinectGrabber               grabber;
     bool                        spatialFiltering;
     bool                        followBigChanges;
     int                         numAveragingSlots;
-	bool                        doInpainting;
-	bool                        doFullFrameFiltering;
+    bool                        doInpainting;
+    bool                        doFullFrameFiltering;
 
     //kinect buffer
     ofxCvFloatImage             FilteredDepthImage;
     ofxCvColorImage             kinectColorImage;
     ofVec2f*                    gradField;
-	ofFpsCounter                fpsKinect;
-	ofxDatGuiTextInput*         fpsKinectText;
+    ofFpsCounter                fpsKinect;
+    ofxDatGuiTextInput*         fpsKinectText;
 
     // Projector and kinect variables
     ofVec2f projRes;
@@ -300,8 +304,8 @@ private:
 
     //Images and cv matrixes
     cv::Mat                     cvRgbImage;
-	cv::Mat                     cvGrayImage;
-//	ofxCvFloatImage             Dptimg;
+    cv::Mat                     cvGrayImage;
+//    ofxCvFloatImage             Dptimg;
     
     //Gradient field variables
     int gradFieldcols, gradFieldrows;
@@ -322,9 +326,9 @@ private:
     float                       threshold;
     ofPolyline                  large;
     ofRectangle                 kinectROI, kinectROIManualCalib;
-	ofVec2f                     ROIStartPoint;
-	ofVec2f                     ROICurrentPoint;
-	bool                        doShowROIonProjector;
+    ofVec2f                     ROIStartPoint;
+    ofVec2f                     ROICurrentPoint;
+    bool                        doShowROIonProjector;
 
     // Base plane
     ofVec3f basePlaneNormal, basePlaneNormalBack;
@@ -346,12 +350,12 @@ private:
     int trials;
     bool upframe;
 
-	// Temporal frame filter for cleaning the colour image used for calibration. It should probably be moved to the grabber class/thread
-	CTemporalFrameFilter TemporalFrameFilter;
-	// Keeps track of how many frames are acquired since last calibration event
-	int TemporalFrameCounter;
-	// Type of temporal filtering of colour image 0: Median, 1 :average
-	int TemporalFilteringType;
+    // Temporal frame filter for cleaning the colour image used for calibration. It should probably be moved to the grabber class/thread
+    CTemporalFrameFilter TemporalFrameFilter;
+    // Keeps track of how many frames are acquired since last calibration event
+    int TemporalFrameCounter;
+    // Type of temporal filtering of colour image 0: Median, 1 :average
+    int TemporalFilteringType;
 
     // Chessboard variables
     int   chessboardSize;
@@ -359,20 +363,23 @@ private:
     int   chessboardY;
 
     // GUI Modal window & interface
-	bool displayGui;
+    bool displayGui;
     shared_ptr<ofxModalConfirm>   confirmModal;
     shared_ptr<ofxModalAlert>   calibModal;
     shared_ptr<ofxModalThemeProjKinect>   modalTheme;
     ofxDatGui* gui;
-	ofxDatGui* StatusGUI;
-	std::string calibrationText;
-	
-	// Debug functions
-	bool DumpDebugFiles;
-	std::string DebugFileOutDir;
-	std::string GetTimeAndDateString();
-	bool savePointPair();
-	void SaveFilteredDepthImageDebug();
+    ofxDatGui* StatusGUI;
+    std::string calibrationText;
+    
+    // Debug functions
+    bool DumpDebugFiles;
+    std::string DebugFileOutDir;
+    std::string GetTimeAndDateString();
+    bool savePointPair();
+    void SaveFilteredDepthImageDebug();
+
+    // ROI image export
+    //string ROIFileOutDir;
 };
 
 

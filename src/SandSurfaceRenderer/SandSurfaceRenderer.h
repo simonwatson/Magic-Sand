@@ -58,6 +58,7 @@ public:
         return textInput->getText();
     }
 
+
 private:
     ofxDatGuiTextInput* textInput;
 };
@@ -82,6 +83,10 @@ public:
     void onScrollViewEvent(ofxDatGuiScrollViewEvent e);
     void onSaveModalEvent(ofxModalEvent e);
     void exit(ofEventArgs& e);
+
+    //STH moved from KinectProjector.h
+    // ROI image export function
+    void SaveROIImage();
    
 private:
     // Private methods
@@ -102,7 +107,7 @@ private:
     
     // Projector Resolution
     int projResX, projResY;
-	ofRectangle kinectROI;
+    ofRectangle kinectROI;
 
     // Conversion matrices
     ofMatrix4x4                 transposedKinectProjMatrix;
@@ -116,10 +121,12 @@ private:
     // Shaders
     ofShader elevationShader;
     ofShader heightMapShader;
+    ofShader greyHeightMapShader; //STH 2024-0318
     
     // FBos
-    ofFbo   fboProjWindow;    
+    ofFbo   fboProjWindow;
     ofFbo   contourLineFramebufferObject;
+    ofFbo   fboGreyscale; //STH 2024-0318
 
     // Base plane
     ofVec3f basePlaneNormal, basePlaneNormalBack;
@@ -129,14 +136,21 @@ private:
     // Colormap
     string colorMapPath;
     string colorMapFile;
+    string greyMapFile; //STH 2024-0319
+    string DEMFilePath; //STH 2024-0323
+    string defaultDEMName; //STH 2024-0327
     std::vector<string> colorMapFilesList;
     ColorMap    heightMap;
+    ColorMap    greyHeightMap; //STH 2024-0318
     std::vector<ColorMap::HeightMapKey> heightMapKeys;
+
     
-	float heightMapScale,heightMapOffset; // Scale and offset values to convert from elevation to height color map texture coordinates
+    float heightMapScale,heightMapOffset; // Scale and offset values to convert from elevation to height color map texture coordinates
+    float greyHeightMapScale, greyHeightMapOffset; //STH 2024-0318
     float contourLineFboScale, contourLineFboOffset; // Scale and offset values to convert depth from contourline shader values to real values
-	float FilteredDepthScale,FilteredDepthOffset; // Scale and offset values to convert depth from normalized shader values to real values
+    float FilteredDepthScale,FilteredDepthOffset; // Scale and offset values to convert depth from normalized shader values to real values
     float elevationMin, elevationMax;
+    float greyElevationMin, greyElevationMax; //STH 2024-0318
     
     // Contourlines
     float contourLineDistance, contourLineFactor;

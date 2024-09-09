@@ -38,8 +38,8 @@ void SandSurfaceRenderer::setup(bool sdisplayGui){
     ofAddListener(ofEvents().exit, this, &SandSurfaceRenderer::exit);
     
     // Sandbox contourlines
-    drawContourLines = true; // Flag if topographic contour lines are enabled
-	contourLineDistance = 10.0; // Elevation distance between adjacent topographic contour lines in millimiters
+    //drawContourLines = true; // Flag if topographic contour lines are enabled
+    contourLineDistance = 10.0; // Elevation distance between adjacent topographic contour lines in millimiters
     
     // Initialize the fbos and images
     projResX = projWindow->getWidth();
@@ -58,8 +58,9 @@ void SandSurfaceRenderer::setup(bool sdisplayGui){
         ofLogVerbose("SandSurfaceRenderer") << "SandSurfaceRenderer.setup(): sandSurfaceRendererSettings.xml could not be loaded " ;
     }
 
+    /////////////////////////////////////////
     // Load colormap folder and set heightmap
-    colorMapPath = "colorMaps/";
+    //colorMapPath = "colorMaps/"; //loaded from settings. 19 Feb 2024. STH
     ofDirectory dir(colorMapPath);
     dir.allowExt("xml");
     dir.listDir();
@@ -70,10 +71,15 @@ void SandSurfaceRenderer::setup(bool sdisplayGui){
     bool heighMapFileLoaded = true;
     
     if (settingsLoaded)
+        ofLogVerbose("SandSurfaceRenderer") << "SandSurfaceRenderer.setup(): loading colorMapFile " ;
         heighMapFileLoaded = heightMap.loadFile(colorMapPath+colorMapFile);
+        //Load in the greyscale height map. STH 2024-0319
+        ofLogVerbose("SandSurfaceRenderer") << "SandSurfaceRenderer.setup(): loading greyMapFile " ;
+        greyHeightMap.loadFile(colorMapPath+greyMapFile);
     
     if (!(settingsLoaded && heighMapFileLoaded) && dir.size() > 0)
     {
+        ofLogVerbose("SandSurfaceRenderer") << "SandSurfaceRenderer.setup(): loading first color map file in directory " ;
         heighMapFileLoaded = heightMap.loadFile(colorMapPath+colorMapFilesList[0]);
         colorMapFile = colorMapFilesList[0];
         saveSettings();
@@ -82,6 +88,7 @@ void SandSurfaceRenderer::setup(bool sdisplayGui){
     
     if (!heighMapFileLoaded)
     {
+        ofLogVerbose("SandSurfaceRenderer") << "SandSurfaceRenderer.setup(): creating heightcolormap.xml file " ;
         heightMap.createFile(colorMapPath+"HeightColorMap.xml");
         colorMapFile = "HeightColorMap.xml";
         saveSettings();
@@ -89,52 +96,75 @@ void SandSurfaceRenderer::setup(bool sdisplayGui){
     }
     
     //Set elevation Min and Max
+    ofLogVerbose("SandSurfaceRenderer") << "setup(): getting max/min elevation from color heightMap " ;
     elevationMin = -heightMap.getScalarRangeMin();
     elevationMax = -heightMap.getScalarRangeMax();
+    ofLogVerbose("SandSurfaceRenderer") << "setup(): min: "<<elevationMin<<" max: "<<elevationMax;
+    //Get max/min elevation data for greyscale. STH 2024-0318
+    ofLogVerbose("SandSurfaceRenderer") << "setup(): getting max/min elevation from greyscale heightMap " ;
+    greyElevationMin = -greyHeightMap.getScalarRangeMin();
+    greyElevationMax = -greyHeightMap.getScalarRangeMax();
+    ofLogVerbose("SandSurfaceRenderer") << "setup(): min: "<<greyElevationMin<<" max: "<<greyElevationMax;
     
     // Calculate the  height map elevation scaling and offset coefficients
-	heightMapScale = (heightMap.getNumEntries()-1)/((elevationMax-elevationMin));
-	heightMapOffset = 0.5/heightMap.getNumEntries()-heightMapScale*elevationMin;
+    ofLogVerbose("SandSurfaceRenderer") << "setup(): getting colour height scale and offset " ;
+    heightMapScale = (heightMap.getNumEntries()-1)/((elevationMax-elevationMin));
+    heightMapOffset = 0.5/heightMap.getNumEntries()-heightMapScale*elevationMin;
+    ofLogVerbose("SandSurfaceRenderer") << "setup(): scale: "<<heightMapScale<<" offset: "<<heightMapOffset;
+    //Get map scale and offsets for greyscale. STH 2024-0318
+    ofLogVerbose("SandSurfaceRenderer") << "setup(): getting greyscale height scale and offset " ;
+    greyHeightMapScale = (greyHeightMap.getNumEntries()-1)/((greyElevationMax-greyElevationMin));
+    greyHeightMapOffset = 0.5/greyHeightMap.getNumEntries()-greyHeightMapScale*greyElevationMin;
+    ofLogVerbose("SandSurfaceRenderer") << "setup(): scale: "<<heightMapScale<<" offset: "<<heightMapOffset;
     
     // Calculate the contourline fbo scaling and offset coefficients
-	contourLineFboScale = elevationMin-elevationMax;
-	contourLineFboOffset = elevationMax;
+    contourLineFboScale = elevationMin-elevationMax;
+    contourLineFboOffset = elevationMax;
     contourLineFactor = contourLineFboScale/contourLineDistance;
     
-	kinectROI = kinectProjector->getKinectROI();
+    kinectROI = kinectProjector->getKinectROI();
 
     //setup the mesh
     setupMesh();
     
-	// Load shaders
+    // Load shaders
     bool loaded = true;
 #ifdef TARGET_OPENGLES
     ofLogVerbose("SandSurfaceRenderer") << "setup(): Loading shadersES2";
-	loaded = loaded && elevationShader.load("shaders/shadersES2/elevationShader");
-	loaded = loaded && heightMapShader.load("shaders/shadersES2/heightMapShader");
+    loaded = loaded && elevationShader.load("shaders/shadersES2/elevationShader");
+    loaded = loaded && heightMapShader.load("shaders/shadersES2/heightMapShader");
 #else
-	if(ofIsGLProgrammableRenderer()){
+    if(ofIsGLProgrammableRenderer()){
         ofLogVerbose("SandSurfaceRenderer") << "setup(): Loading shadersGL3/elevationShader";
-		loaded = loaded && elevationShader.load("shaders/shadersGL3/elevationShader");
+        loaded = loaded && elevationShader.load("shaders/shadersGL3/elevationShader");
         ofLogVerbose("SandSurfaceRenderer") << "setup(): Loading shadersGL3/heightMapShader";
-		loaded = loaded && heightMapShader.load("shaders/shadersGL3/heightMapShader");
-	}else{
+        loaded = loaded && heightMapShader.load("shaders/shadersGL3/heightMapShader");
+    }else{
         ofLogVerbose("SandSurfaceRenderer") << "setup(): Loading shadersGL2/elevationShader";
-		loaded = loaded && elevationShader.load("shaders/shadersGL2/elevationShader");
+        loaded = loaded && elevationShader.load("shaders/shadersGL2/elevationShader");
         ofLogVerbose("SandSurfaceRenderer") << "setup(): Loading shadersGL2/heightMapShader";
-		loaded = loaded && heightMapShader.load("shaders/shadersGL2/heightMapShader");
-	}
+        loaded = loaded && heightMapShader.load("shaders/shadersGL2/heightMapShader");
+    }
 #endif
     if (!loaded)
     {
         ofLogError("GreatSand") << "setup(): shader not loaded" ;
     }
     
+    ofLogVerbose("SandSurfaceRenderer") << "setup(): setting up fboProjWindow";
     //Prepare fbo
     fboProjWindow.allocate(projResX, projResY, GL_RGBA);
     fboProjWindow.begin();
     ofClear(0,0,0,255);
     fboProjWindow.end();
+
+    ofLogVerbose("SandSurfaceRenderer") << "setup(): setting up fboGreyscale";
+    //Prepare greyscale fbo
+    //STH 2024-0318
+    fboGreyscale.allocate(projResX, projResY, GL_R8);
+    fboGreyscale.begin();
+    ofClear(0);
+    fboGreyscale.end();
     
     displayGui = sdisplayGui;
     if (displayGui)
@@ -169,8 +199,8 @@ void SandSurfaceRenderer::updateRangesAndBasePlane(){
     kinectProjector->updateNativeScale(basePlaneOffset.z+elevationMax, basePlaneOffset.z+elevationMin);
     
     // Calculate the  FilteredDepthImage scaling and offset coefficients
-	FilteredDepthScale = elevationMin-elevationMax;
-	FilteredDepthOffset = basePlaneOffset.z+elevationMax;
+    FilteredDepthScale = elevationMin-elevationMax;
+    FilteredDepthOffset = basePlaneOffset.z+elevationMax;
     
     ofLogVerbose("SandSurfaceRenderer") << "setRangesAndBasePlaneEquation(): basePlaneOffset: " << basePlaneOffset ;
     ofLogVerbose("SandSurfaceRenderer") << "setRangesAndBasePlaneEquation(): basePlaneNormal: " << basePlaneNormal ;
@@ -180,18 +210,18 @@ void SandSurfaceRenderer::setupMesh(){
     // Initialise mesh
     kinectROI = kinectProjector->getKinectROI();
   //  ofVec2f kinectRes = kinectProjector->getKinectRes();
-	ofLogVerbose("SandSurfaceRenderer") << "setupMesh. KinectROI: " << kinectROI;
+    ofLogVerbose("SandSurfaceRenderer") << "setupMesh. KinectROI: " << kinectROI;
 
     meshwidth = kinectROI.width;
     meshheight = kinectROI.height;
     mesh.clear();
 
-	for (unsigned int y = 0; y < meshheight; y++)
+    for (unsigned int y = 0; y < meshheight; y++)
         for(unsigned int x=0;x<meshwidth;x++)
         {
-            ofPoint pt = ofPoint(x+kinectROI.x,y+kinectROI.y,0.0f)-ofPoint(0.5,0.5,0); // We move of a half pixel to center the color pixel (more beautiful)
+            ofVec3f pt = ofVec3f(x+kinectROI.x,y+kinectROI.y,0.0f)-ofVec3f(0.5,0.5,0); // We move of a half pixel to center the color pixel (more beautiful)
             mesh.addVertex(pt); // make a new vertex
-            mesh.addTexCoord(pt);
+            mesh.addTexCoord(ofVec2f(pt.x, pt.y));
         }
     for(unsigned int y=0;y<meshheight-1;y++)
         for(unsigned int x=0;x<meshwidth-1;x++)
@@ -209,8 +239,8 @@ void SandSurfaceRenderer::setupMesh(){
 void SandSurfaceRenderer::update(){
     // Update Renderer state if needed
     //if (kinectProjector->isROIUpdated() || kinectProjector->getKinectROI() != kinectROI)
-	if (kinectProjector->getKinectROI() != kinectROI)
-		setupMesh();
+    if (kinectProjector->getKinectROI() != kinectROI)
+        setupMesh();
     if (kinectProjector->isBasePlaneUpdated())
         updateRangesAndBasePlane();
     if (kinectProjector->isCalibrationUpdated())
@@ -222,38 +252,40 @@ void SandSurfaceRenderer::update(){
     drawSandbox();
     
     // GUI
-	if (displayGui) {
-		gui->update();
-		gui2->update();
+    if (displayGui) {
+        gui->update();
+        gui2->update();
         if (editColorMap){
             gui3->update();
             colorList->update();
         }
-	}
+    }
 }
 
 void SandSurfaceRenderer::drawMainWindow(float x, float y, float width, float height){
     fboProjWindow.draw(x, y, width, height);
-    
+
+    // /////////////////////////
     if (displayGui) {
         heightMap.getTexture().draw(gui2->getPosition().x, gui2->getPosition().y+gui2->getHeight(), gui2->getWidth(), 30);
-		gui->draw();
-		gui2->draw();
+        gui->draw();
+        gui2->draw();
         if (editColorMap){
             gui3->draw();
             colorList->draw();
         }
-	}
+    }
 }
 
 void SandSurfaceRenderer::drawProjectorWindow(){
-	fboProjWindow.draw(0,0);
+    fboProjWindow.draw(0,0);
 }
 
 void SandSurfaceRenderer::drawSandbox() {
     fboProjWindow.begin();
     ofBackground(0);
     kinectProjector->bind();
+    //ofLogVerbose("SandSurfaceRenderer") << "drawSandbox(): Setting up fboProjWindow heightMapShader ";
     heightMapShader.begin();
     heightMapShader.setUniformMatrix4f("kinectProjMatrix",transposedKinectProjMatrix);
     heightMapShader.setUniformMatrix4f("kinectWorldMatrix",transposedKinectWorldMatrix);
@@ -268,6 +300,25 @@ void SandSurfaceRenderer::drawSandbox() {
     heightMapShader.end();
     kinectProjector->unbind();
     fboProjWindow.end();
+
+    ///////////////////
+    //render the elevation data to fboElevationMap using the
+    //greyHeightMap color map and the greyHeightMapScale and
+    //greyHeightMapOffset coefficients. STH 2024-0319
+    fboGreyscale.begin();
+    ofBackground(0);
+    kinectProjector->bind();
+    heightMapShader.begin();
+    heightMapShader.setUniformMatrix4f("kinectProjMatrix",transposedKinectProjMatrix);
+    heightMapShader.setUniformMatrix4f("kinectWorldMatrix",transposedKinectWorldMatrix);
+    heightMapShader.setUniform2f("heightColorMapTransformation",ofVec2f(greyHeightMapScale,greyHeightMapOffset));
+    heightMapShader.setUniform2f("depthTransformation",ofVec2f(FilteredDepthScale,FilteredDepthOffset));
+    heightMapShader.setUniform4f("basePlaneEq", basePlaneEq);
+    heightMapShader.setUniformTexture("heightColorMapSampler",greyHeightMap.getTexture(), 2);
+    mesh.draw();//should this be commented out?
+    heightMapShader.end();
+    kinectProjector->unbind();
+    fboGreyscale.end();
 }
 
 void SandSurfaceRenderer::prepareContourLinesFbo()
@@ -275,7 +326,7 @@ void SandSurfaceRenderer::prepareContourLinesFbo()
     contourLineFramebufferObject.begin();
     ofClear(255,255,255, 0);
     kinectProjector->bind();
-	elevationShader.begin();
+    elevationShader.begin();
     elevationShader.setUniformMatrix4f("kinectProjMatrix",transposedKinectProjMatrix);
     elevationShader.setUniformMatrix4f("kinectWorldMatrix",transposedKinectWorldMatrix);
     elevationShader.setUniform2f("contourLineFboTransformation",ofVec2f(contourLineFboScale,contourLineFboOffset));
@@ -327,11 +378,11 @@ void SandSurfaceRenderer::setupGui(){
     gui3->onSliderEvent(this, &SandSurfaceRenderer::onSliderEvent);
     gui3->onColorPickerEvent(this, &SandSurfaceRenderer::onColorPickerEvent);
     
-	gui->setAutoDraw(false);
-	gui2->setAutoDraw(false);
-	gui3->setAutoDraw(false);
-	
-	int pos = find(colorMapFilesList.begin(), colorMapFilesList.end(), colorMapFile) - colorMapFilesList.begin();
+    gui->setAutoDraw(false);
+    gui2->setAutoDraw(false);
+    gui3->setAutoDraw(false);
+    
+    int pos = find(colorMapFilesList.begin(), colorMapFilesList.end(), colorMapFile) - colorMapFilesList.begin();
     if (pos < colorMapFilesList.size())
         gui2->getDropdown("Load Color Map")->select(pos);
     
@@ -350,8 +401,8 @@ void SandSurfaceRenderer::updateColorListColor(int i, int j){
     float bt = (kc.getBrightness() < 245) ? kc.getBrightness()+10 : 255;
     kb.setSaturation(st);
     kb.setBrightness(bt);
-    colorList->get(i)->setBackgroundColors(kc, kb, kb);
-    colorList->get(i)->setLabelColor(kc.getInverted());
+    colorList->getItemAtIndex(i)->setBackgroundColors(kc, kb, kb);
+    colorList->getItemAtIndex(i)->setLabelColor(kc.getInverted());
 }
 
 void SandSurfaceRenderer::populateColorList(){
@@ -360,7 +411,7 @@ void SandSurfaceRenderer::populateColorList(){
         int j = heightMap.size()-1-i;
         colorList->add("color");
         updateColorListColor(i, j);
-        colorList->get(i)->setLabel("Height: "+ofToString(heightMap[j].height));
+        colorList->getItemAtIndex(i)->setLabel("Height: "+ofToString(heightMap[j].height));
     }
     //Initiate color controls
     selectedColor = 0;
@@ -370,7 +421,7 @@ void SandSurfaceRenderer::populateColorList(){
     gui3->getSlider("Height")->setValue(heightMap[j].height);
     gui3->getSlider("Height")->setMax(heightMap[j].height+100);
     gui3->getSlider("Height")->setMin(heightMap[j-1].height);
-    colorList->get(0)->setLabelAlignment(ofxDatGuiAlignment::CENTER);
+    colorList->getItemAtIndex(0)->setLabelAlignment(ofxDatGuiAlignment::CENTER);
 }
 
 void SandSurfaceRenderer::onButtonEvent(ofxDatGuiButtonEvent e){
@@ -385,10 +436,10 @@ void SandSurfaceRenderer::onButtonEvent(ofxDatGuiButtonEvent e){
         float newheight = (j > 0) ? (heightMap[j-1].height+heightMap[j].height)/2 : heightMap[j].height+1;
         colorList->add("color");
         updateColorListColor(i, j);
-        colorList->get(i)->setLabel("Height: "+ofToString(newheight));
+        colorList->getItemAtIndex(i)->setLabel("Height: "+ofToString(newheight));
         colorList->move(i,selectedColor+1);
         heightMap.addKey(heightMap[j].color, newheight);
-        onScrollViewEvent(ofxDatGuiScrollViewEvent(colorList, colorList->get(selectedColor+1), selectedColor+1));
+        onScrollViewEvent(ofxDatGuiScrollViewEvent(colorList, colorList->getItemAtIndex(selectedColor+1)));
     } else if (e.target->is("Remove color")){
         if (heightMap.size() > 1){
             int j = heightMap.size()-1-selectedColor;
@@ -398,7 +449,7 @@ void SandSurfaceRenderer::onButtonEvent(ofxDatGuiButtonEvent e){
             if (i == heightMap.size())
                 i -= 1;
             selectedColor += 1; // To get i != selectedColor => update
-            onScrollViewEvent(ofxDatGuiScrollViewEvent(colorList, colorList->get(i), i));
+            onScrollViewEvent(ofxDatGuiScrollViewEvent(colorList, colorList->getItemAtIndex(i)));
         }
     } else if (e.target->is("Move up")){
         int i = selectedColor;
@@ -407,7 +458,7 @@ void SandSurfaceRenderer::onButtonEvent(ofxDatGuiButtonEvent e){
             heightMap.swapKeys(j, j+1);
             updateColorListColor(i, j);
             updateColorListColor(i-1, j+1);
-            onScrollViewEvent(ofxDatGuiScrollViewEvent(colorList, colorList->get(i-1), i-1));
+            onScrollViewEvent(ofxDatGuiScrollViewEvent(colorList, colorList->getItemAtIndex(i-1)));
        }
     } else if (e.target->is("Move down")){
         int i = selectedColor;
@@ -416,7 +467,7 @@ void SandSurfaceRenderer::onButtonEvent(ofxDatGuiButtonEvent e){
             heightMap.swapKeys(j, j-1);
             updateColorListColor(i, j);
             updateColorListColor(i+1, j-1);
-            onScrollViewEvent(ofxDatGuiScrollViewEvent(colorList, colorList->get(i+1), i+1));
+            onScrollViewEvent(ofxDatGuiScrollViewEvent(colorList, colorList->getItemAtIndex(i+1)));
         }
     } else if (e.target->is("Undo")){
         int i = selectedColor;
@@ -447,12 +498,12 @@ void SandSurfaceRenderer::onColorPickerEvent(ofxDatGuiColorPickerEvent e){
 void SandSurfaceRenderer::onSliderEvent(ofxDatGuiSliderEvent e){
     if (e.target->is("Contour lines distance")) {
         contourLineDistance = e.value;
-        contourLineFactor = contourLineFboScale/contourLineDistance;        
+        contourLineFactor = contourLineFboScale/contourLineDistance;
     } else if (e.target->is("Height")) {
         int i = selectedColor;
         int j = heightMap.size()-1-i;
         heightMap.setHeightKey(j, e.value);
-        colorList->get(i)->setLabel("Height: "+ofToString(e.value));
+        colorList->getItemAtIndex(i)->setLabel("Height: "+ofToString(e.value));
     }
 }
 
@@ -463,11 +514,11 @@ void SandSurfaceRenderer::onDropdownEvent(ofxDatGuiDropdownEvent e){
 }
 
 void SandSurfaceRenderer::onScrollViewEvent(ofxDatGuiScrollViewEvent e){
-    int i = e.index;
+    int i = e.parent->getIndex();
     if (i != selectedColor){
         int j = heightMap.size()-1-i;
         e.target->setLabelAlignment(ofxDatGuiAlignment::CENTER);
-        colorList->get(selectedColor)->setLabelAlignment(ofxDatGuiAlignment::LEFT);
+        colorList->getItemAtIndex(selectedColor)->setLabelAlignment(ofxDatGuiAlignment::LEFT);
 //        gui3->getButton("ColorName")->setLabel("Color #"+ofToString(i+1));
         gui3->getColorPicker("ColorPicker")->setColor(heightMap[j].color);
         undoColor = heightMap[j].color;
@@ -497,9 +548,50 @@ void SandSurfaceRenderer::onSaveModalEvent(ofxModalEvent e){
             filen += ".xml";
         heightMap.saveFile(colorMapPath+filen);
         colorMapFilesList.push_back(filen);
-        gui2->getDropdown("Load Color Map")->setOptions(colorMapFilesList);
+        //gui2->getDropdown("Load Color Map")->setOptions(colorMapFilesList);
         ofLogVerbose("SandSurfaceRenderer") << "save confirm button pressed, filename: " << filen;
     }
+}
+
+void SandSurfaceRenderer::SaveROIImage()
+{
+    cout << "********************" << endl;
+    ofPixels pixels;
+    //pixels.allocate(fboProjWindow.getWidth(), fboProjWindow.getHeight(), OF_IMAGE_GRAYSCALE);
+    // fboProjWindow.readToPixels(pixels);
+
+    // ofImage elevationMapImage;
+    // elevationMapImage.setFromPixels(pixels);
+    // elevationMapImage.setImageType(OF_IMAGE_GRAYSCALE);
+    // cout << "Saving grayscale elevation map" << endl;
+    // cout << DEMFilePath <<endl;
+    // cout << DEMFilePath+"screenshot.png" <<endl;
+    // cout << ofFilePath::getAbsolutePath("../"+DEMFilePath) <<endl;
+    // elevationMapImage.save("../../"+DEMFilePath+"screenshot.png");
+
+    /////////////
+    //Output the greyscale elevation data from the fboGreyscale frame buffer
+    //STH 2024-0319
+    cout << "********************" << endl;
+    //ofPixels pixels;
+    fboGreyscale.readToPixels(pixels);
+
+    ofImage greyElevationMapImage;
+    greyElevationMapImage.setFromPixels(pixels);
+    //elevationMapImage.setImageType(OF_IMAGE_GRAYSCALE);
+    cout << "Saving second grayscale elevation map" << endl;
+    cout << ofFilePath::getAbsolutePath(DEMFilePath+defaultDEMName) <<endl;
+    //cout << kinectROI <<endl;
+    //cout << greyElevationMapImage.getWidth() <<endl;
+    //cout << greyElevationMapImage.getHeight() <<endl;
+    //greyElevationMapImage.save(DEMFilePath+defaultDEMName);
+    //cout << kinectProjector->kinectCoordToProjCoord(kinectROI.getMinX(), kinectROI.getMinY()) <<endl;
+    //Crop the image to match the ROI
+    //STH 2024-0327
+    ofVec2f UL = kinectProjector->kinectCoordToProjCoord(kinectROI.getMinX(), kinectROI.getMinY());
+    ofVec2f LR = kinectProjector->kinectCoordToProjCoord(kinectROI.getMaxX()-1, kinectROI.getMaxY()-1);
+    greyElevationMapImage.crop(UL.x, UL.y, LR.x-UL.x, LR.y-UL.y);
+    greyElevationMapImage.save(DEMFilePath+defaultDEMName);
 }
 
 
@@ -511,25 +603,35 @@ bool SandSurfaceRenderer::loadSettings(){
     ofXml xml;
     if (!xml.load(settingsFile))
         return false;
-    xml.setTo("SURFACERENDERERSETTINGS");
-    colorMapFile = xml.getValue<string>("colorMapFile");
-    drawContourLines = xml.getValue<bool>("drawContourLines");
-    contourLineDistance = xml.getValue<float>("contourLineDistance");
-    
+    auto srs = xml.find("SURFACERENDERERSETTINGS").getFirst();
+    colorMapFile = srs.getChild("colorMapFile").getValue<string>();
+    greyMapFile = srs.getChild("greyMapFile").getValue<string>();
+    drawContourLines = srs.getChild("drawContourLines").getValue<bool>();
+    contourLineDistance = srs.getChild("contourLineDistance").getValue<float>();
+    ofLogVerbose("SandSurfaceRenderer")<<"loadSettings():"<<colorMapFile<<":"<<greyMapFile<<":"<<drawContourLines<<":"<<contourLineDistance;
+
+    //adding editable settings vs hardcoded. 19 Feb 2024 STH
+    string defaultsFile = "settings/defaultSettings.xml";
+    if (!xml.load(defaultsFile))
+        return false;
+    auto defaultSets = xml.find("DEFAULTSETTINGS").getFirst();
+    colorMapPath = defaultSets.getChild("colorMapPath").getValue<string>(); //19 Feb 2024 STH
+    DEMFilePath = defaultSets.getChild("DEMFilePath").getValue<string>(); //19 Feb 2024 STH
+    defaultDEMName = defaultSets.getChild("defaultDEMName").getValue<string>(); //27 March 2024 STH
     return true;
 }
 
 bool SandSurfaceRenderer::saveSettings(){
     string settingsFile = "settings/sandSurfaceRendererSettings.xml";
-
+    
     ofXml xml;
-    xml.addChild("SURFACERENDERERSETTINGS");
-    xml.setTo("SURFACERENDERERSETTINGS");
-    xml.addValue("colorMapFile", colorMapFile);
-    xml.addValue("drawContourLines", drawContourLines);
-    xml.addValue("contourLineDistance", contourLineDistance);
-    xml.setToParent();
+    auto srs = xml.appendChild("SURFACERENDERERSETTINGS");
+    srs.appendChild("colorMapFile").set(colorMapFile);
+    srs.appendChild("greyMapFile").set(greyMapFile);
+    srs.appendChild("drawContourLines").set(drawContourLines);
+    srs.appendChild("contourLineDistance").set(contourLineDistance);
     return xml.save(settingsFile);
 }
+
 
 
