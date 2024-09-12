@@ -26,40 +26,43 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 using namespace ofxCSG;
 
-KinectProjector::KinectProjector(std::shared_ptr<ofAppBaseWindow> const& p)
-:ROIcalibrated(false),
-projKinectCalibrated(false),
-//calibrating (false),
-basePlaneUpdated (false),
-basePlaneComputed(false),
-projKinectCalibrationUpdated (false),
-//ROIUpdated (false),
-imageStabilized (false),
-waitingForFlattenSand (false),
-drawKinectView(false),
-drawKinectColorView(true)
+KinectProjector::KinectProjector(std::shared_ptr<ofAppBaseWindow> const &p)
+    : ROIcalibrated(false),
+      projKinectCalibrated(false),
+      // calibrating (false),
+      basePlaneUpdated(false),
+      basePlaneComputed(false),
+      projKinectCalibrationUpdated(false),
+      // ROIUpdated (false),
+      imageStabilized(false),
+      waitingForFlattenSand(false),
+      drawKinectView(false),
+      drawKinectColorView(true)
 {
     doShowROIonProjector = false;
     applicationState = APPLICATION_STATE_SETUP;
     projWindow = p;
     TemporalFilteringType = 1;
-    //DumpDebugFiles = true; //read in from settings file. 19 Feb 2024. STH
-    //DebugFileOutDir = "DebugFiles//"; //read in from settings file. 19 Feb 2024. STH
+    // DumpDebugFiles = true; //read in from settings file. 19 Feb 2024. STH
+    // DebugFileOutDir = "DebugFiles//"; //read in from settings file. 19 Feb 2024. STH
 
     ////////////////////////////////////////////////////////
-    //adding editable settings vs hardcoded. 19 Feb 2024 STH
+    // adding editable settings vs hardcoded. 19 Feb 2024 STH
     ofXml xml;
     string defaultsFile = "settings/defaultSettings.xml";
-    if (!xml.load(defaultsFile)){
+    if (!xml.load(defaultsFile))
+    {
         DumpDebugFiles = true;
         DebugFileOutDir = "DebugFiles/";
-        //ROIFileOutDir = "DebugFiles/";
+        // ROIFileOutDir = "DebugFiles/";
     }
-    else{}
-        auto defaultSets = xml.find("DEFAULTSETTINGS").getFirst();
-        DebugFileOutDir = defaultSets.getChild("debugFolderPath").getValue<string>();
-        DumpDebugFiles = defaultSets.getChild("dumpDebugFiles").getValue<bool>();
-        //ROIFileOutDir = defaultSets.getChild("roiImagePath").getValue<string>();
+    else
+    {
+    }
+    auto defaultSets = xml.find("DEFAULTSETTINGS").getFirst();
+    DebugFileOutDir = defaultSets.getChild("debugFolderPath").getValue<string>();
+    DumpDebugFiles = defaultSets.getChild("dumpDebugFiles").getValue<bool>();
+    // ROIFileOutDir = defaultSets.getChild("roiImagePath").getValue<string>();
     ////////////////////////////////////////////////////////
 }
 
@@ -75,30 +78,30 @@ void KinectProjector::setup(bool sdisplayGui)
     confirmModal->setTheme(modalTheme);
     confirmModal->addListener(this, &KinectProjector::onConfirmModalEvent);
     confirmModal->setButtonLabel("Ok");
-    
+
     calibModal = make_shared<ofxModalAlert>();
     calibModal->setTheme(modalTheme);
     calibModal->addListener(this, &KinectProjector::onCalibModalEvent);
     calibModal->setButtonLabel("Cancel");
-        
+
     displayGui = sdisplayGui;
 
     // calibration chessboard config
     chessboardSize = 300;
     chessboardX = 5;
     chessboardY = 4;
-    
+
     //     Gradient Field
     gradFieldResolution = 10;
     arrowLength = 25;
-    
+
     // Setup default base plane
-    basePlaneNormalBack = ofVec3f(0,0,1); // This is our default baseplane normal
-    basePlaneOffsetBack= ofVec3f(0,0,870); // This is our default baseplane offset
+    basePlaneNormalBack = ofVec3f(0, 0, 1);   // This is our default baseplane normal
+    basePlaneOffsetBack = ofVec3f(0, 0, 870); // This is our default baseplane offset
     basePlaneNormal = basePlaneNormalBack;
     basePlaneOffset = basePlaneOffsetBack;
-    basePlaneEq=getPlaneEquation(basePlaneOffset,basePlaneNormal);
-    maxOffsetBack = basePlaneOffset.z-300;
+    basePlaneEq = getPlaneEquation(basePlaneOffset, basePlaneNormal);
+    maxOffsetBack = basePlaneOffset.z - 300;
     maxOffset = maxOffsetBack;
     maxOffsetSafeRange = 50; // Range above the autocalib measured max offset
 
@@ -118,7 +121,7 @@ void KinectProjector::setup(bool sdisplayGui)
     followBigChanges = false;
     numAveragingSlots = 15;
     TemporalFrameCounter = 0;
-    
+
     // Get projector and kinect width & height
     projRes = ofVec2f(projWindow->getWidth(), projWindow->getHeight());
     kinectRes = grabber.getKinectSize();
@@ -129,23 +132,53 @@ void KinectProjector::setup(bool sdisplayGui)
     FilteredDepthImage.allocate(kinectRes.x, kinectRes.y);
     kinectColorImage.allocate(kinectRes.x, kinectRes.y);
     thresholdedImage.allocate(kinectRes.x, kinectRes.y);
-    
+
+    // set depth image to a simulated image loaded from a greyscale PNG file
+    if (grabber.isKinectSimulated())
+    {
+        ofImage simDepthImage;
+        if (simDepthImage.load("sim/depth.png"))
+        {
+            cout << "Simulated depth image loaded" << endl;
+            unsigned char *grayPixels = simDepthImage.getPixels().getData();
+            float *floatPixels = new float[kinectRes.x * kinectRes.y * 3];
+            for (int i = 0; i < kinectRes.x * kinectRes.y; i++)
+            {
+                int f = i * 3;
+                float floatPixelValue = (float)grayPixels[i] / 255.0f;
+                floatPixels[i] = floatPixelValue;
+                /*floatPixels[f] = 1.0f;
+                floatPixels[f+1] = 1.0f;
+                floatPixels[f+2] = 1.0f;*/
+                // floatPixels[f+3] = 1.0f;
+            }
+
+            FilteredDepthImage.setFromPixels(floatPixels, kinectRes.x, kinectRes.y);
+            // FilteredDepthImage.set(0.5f);
+            FilteredDepthImage.updateTexture();
+        }
+        else
+        {
+            cout << "Simulated depth image not loaded" << endl;
+        }
+    }
+
     kpt = new ofxKinectProjectorToolkit(projRes, kinectRes);
 
     // finish kinectgrabber setup and start the grabber
     grabber.setupFramefilter(gradFieldResolution, maxOffset, kinectROI, spatialFiltering, followBigChanges, numAveragingSlots);
     kinectWorldMatrix = grabber.getWorldMatrix();
-    ofLogVerbose("KinectProjector") << "KinectProjector.setup(): kinectWorldMatrix: " << kinectWorldMatrix ;
-    
+    ofLogVerbose("KinectProjector") << "KinectProjector.setup(): kinectWorldMatrix: " << kinectWorldMatrix;
+
     // Setup gradient field
     setupGradientField();
-    
+
     fboProjWindow.allocate(projRes.x, projRes.y, GL_RGBA);
     fboProjWindow.begin();
     ofClear(255, 255, 255, 0);
     ofBackground(255); // Set to white in setup mode
     fboProjWindow.end();
-    
+
     fboMainWindow.allocate(kinectRes.x, kinectRes.y, GL_RGBA);
     fboMainWindow.begin();
     ofClear(255, 255, 255, 0);
@@ -159,7 +192,7 @@ void KinectProjector::setup(bool sdisplayGui)
     updateStatusGUI();
 }
 
-void KinectProjector::exit(ofEventArgs& e)
+void KinectProjector::exit(ofEventArgs &e)
 {
     if (ROIcalibrated)
     {
@@ -167,29 +200,31 @@ void KinectProjector::exit(ofEventArgs& e)
         {
             ofLogVerbose("KinectProjector") << "exit(): Settings saved ";
         }
-        else {
+        else
+        {
             ofLogVerbose("KinectProjector") << "exit(): Settings could not be saved ";
         }
     }
 }
 
-void KinectProjector::setupGradientField(){
+void KinectProjector::setupGradientField()
+{
     gradFieldcols = kinectRes.x / gradFieldResolution;
     gradFieldrows = kinectRes.y / gradFieldResolution;
-    
-    gradField = new ofVec2f[gradFieldcols*gradFieldrows];
-    ofVec2f* gfPtr=gradField;
-    for(unsigned int y=0;y<gradFieldrows;++y)
-        for(unsigned int x=0;x<gradFieldcols;++x,++gfPtr)
-            *gfPtr=ofVec2f(0);
+
+    gradField = new ofVec2f[gradFieldcols * gradFieldrows];
+    ofVec2f *gfPtr = gradField;
+    for (unsigned int y = 0; y < gradFieldrows; ++y)
+        for (unsigned int x = 0; x < gradFieldcols; ++x, ++gfPtr)
+            *gfPtr = ofVec2f(0);
 }
 
-void KinectProjector::setGradFieldResolution(int sgradFieldResolution){
+void KinectProjector::setGradFieldResolution(int sgradFieldResolution)
+{
     gradFieldResolution = sgradFieldResolution;
-    //robotconscience NI2 code removed. 17 Feb 2024 STH
-    grabber.performInThread([sgradFieldResolution](KinectGrabber & kg) {
-        kg.setGradFieldResolution(sgradFieldResolution);
-    });
+    // robotconscience NI2 code removed. 17 Feb 2024 STH
+    grabber.performInThread([sgradFieldResolution](KinectGrabber &kg)
+                            { kg.setGradFieldResolution(sgradFieldResolution); });
 }
 
 // For some reason this call eats milliseconds - so it should only be called when something is changed
@@ -251,7 +286,8 @@ void KinectProjector::updateStatusGUI()
     StatusGUI->getLabel("Application Status")->setLabel("Application state: " + AppStatus);
     StatusGUI->getLabel("Application Status")->setLabelColor(ofColor(255, 255, 0));
 
-    StatusGUI->getLabel("Calibration Step")->setLabel("Calibration Step: " + calibrationText);;
+    StatusGUI->getLabel("Calibration Step")->setLabel("Calibration Step: " + calibrationText);
+    ;
     StatusGUI->getLabel("Calibration Step")->setLabelColor(ofColor(0, 255, 255));
 
     gui->getToggle("Spatial filtering")->setChecked(spatialFiltering);
@@ -264,12 +300,12 @@ void KinectProjector::update()
 {
     // Clear updated state variables
     basePlaneUpdated = false;
-//    ROIUpdated = false;
+    //    ROIUpdated = false;
     projKinectCalibrationUpdated = false;
 
     // Try to open the kinect every 3. second if it is not yet open
     float TimeStamp = ofGetElapsedTimef();
-    if (!kinectOpened && TimeStamp-lastKinectOpenTry > 3)
+    if (!kinectOpened && TimeStamp - lastKinectOpenTry > 3)
     {
         lastKinectOpenTry = TimeStamp;
         kinectOpened = grabber.openKinect();
@@ -297,37 +333,39 @@ void KinectProjector::update()
 
     // Get images from kinect grabber
     ofFloatPixels filteredframe;
-    if (kinectOpened && grabber.filtered.tryReceive(filteredframe))
+    if (grabber.isKinectSimulated() || (kinectOpened && grabber.filtered.tryReceive(filteredframe)))
     {
-        fpsKinect.newFrame();
-        fpsKinectText->setText(ofToString(fpsKinect.getFps(), 2));
-
-        FilteredDepthImage.setFromPixels(filteredframe.getData(), kinectRes.x, kinectRes.y);
-        FilteredDepthImage.updateTexture();
-        
-        // Get color image from kinect grabber
-        ofPixels coloredframe;
-        if (grabber.colored.tryReceive(coloredframe))
+        if (!grabber.isKinectSimulated())
         {
-            kinectColorImage.setFromPixels(coloredframe);
-        
-            if (TemporalFilteringType == 0)
-                TemporalFrameFilter.NewFrame(kinectColorImage.getPixels().getData(), kinectColorImage.width, kinectColorImage.height);
-            else if (TemporalFilteringType == 1)
-                TemporalFrameFilter.NewColFrame(kinectColorImage.getPixels().getData(), kinectColorImage.width, kinectColorImage.height);
-        }
+            fpsKinect.newFrame();
+            fpsKinectText->setText(ofToString(fpsKinect.getFps(), 2));
 
-        // Get gradient field from kinect grabber
-        grabber.gradient.tryReceive(gradField);
-        
-        // Update grabber stored frame number
-        grabber.lock();
-        grabber.decStoredframes();
-        grabber.unlock();
-        
+            FilteredDepthImage.setFromPixels(filteredframe.getData(), kinectRes.x, kinectRes.y);
+            FilteredDepthImage.updateTexture();
+
+            // Get color image from kinect grabber
+            ofPixels coloredframe;
+            if (grabber.colored.tryReceive(coloredframe))
+            {
+                kinectColorImage.setFromPixels(coloredframe);
+
+                if (TemporalFilteringType == 0)
+                    TemporalFrameFilter.NewFrame(kinectColorImage.getPixels().getData(), kinectColorImage.width, kinectColorImage.height);
+                else if (TemporalFilteringType == 1)
+                    TemporalFrameFilter.NewColFrame(kinectColorImage.getPixels().getData(), kinectColorImage.width, kinectColorImage.height);
+            }
+
+            // Get gradient field from kinect grabber
+            grabber.gradient.tryReceive(gradField);
+
+            // Update grabber stored frame number
+            grabber.lock();
+            grabber.decStoredframes();
+            grabber.unlock();
+        }
         // Is the depth image stabilized
         imageStabilized = grabber.isImageStabilized();
-        
+
         // Are we calibrating ?
         if (applicationState == APPLICATION_STATE_CALIBRATING && !waitingForFlattenSand)
         {
@@ -335,7 +373,7 @@ void KinectProjector::update()
         }
         else
         {
-            //ofEnableAlphaBlending();
+            // ofEnableAlphaBlending();
             fboMainWindow.begin();
             if (drawKinectView || drawKinectColorView)
             {
@@ -349,7 +387,7 @@ void KinectProjector::update()
                     FilteredDepthImage.draw(0, 0);
                 }
                 ofNoFill();
-                
+
                 if (ROIcalibrated)
                 {
                     ofSetColor(0, 0, 255);
@@ -357,8 +395,8 @@ void KinectProjector::update()
                 }
 
                 ofSetColor(255, 0, 0);
-                ofDrawRectangle(1, 1, kinectRes.x-1, kinectRes.y-1);
-        
+                ofDrawRectangle(1, 1, kinectRes.x - 1, kinectRes.y - 1);
+
                 if (calibrationState == CALIBRATION_STATE_ROI_MANUAL_DETERMINATION && ROICalibState == ROI_CALIBRATION_STATE_INIT)
                 {
                     int xmin = std::min((int)ROIStartPoint.x, (int)ROICurrentPoint.x);
@@ -395,7 +433,7 @@ void KinectProjector::update()
 
         // Draw rectangle of ROI using the offset by the current sand level
         ofVec2f UL = kinectCoordToProjCoord(kinectROI.getMinX(), kinectROI.getMinY());
-        ofVec2f LR = kinectCoordToProjCoord(kinectROI.getMaxX()-1, kinectROI.getMaxY()-1);
+        ofVec2f LR = kinectCoordToProjCoord(kinectROI.getMaxX() - 1, kinectROI.getMaxY() - 1);
 
         ofSetColor(255, 0, 0);
         ofRectangle tempRect(ofPoint(UL.x, UL.y), ofPoint(LR.x, LR.y));
@@ -444,7 +482,6 @@ void KinectProjector::mousePressed(int x, int y, int button)
     }
 }
 
-
 void KinectProjector::mouseReleased(int x, int y, int button)
 {
     if (calibrationState == CALIBRATION_STATE_ROI_MANUAL_DETERMINATION && ROICalibState == ROI_CALIBRATION_STATE_INIT)
@@ -479,7 +516,7 @@ void KinectProjector::mouseDragged(int x, int y, int button)
     if (calibrationState == CALIBRATION_STATE_ROI_MANUAL_DETERMINATION && ROICalibState == ROI_CALIBRATION_STATE_INIT)
     {
         x = std::max(0, x);
-        x = std::min((int)kinectRes.x-1, x);
+        x = std::min((int)kinectRes.x - 1, x);
         y = std::max(0, y);
         y = std::min((int)kinectRes.y - 1, y);
 
@@ -493,22 +530,26 @@ bool KinectProjector::getProjectionFlipped()
     return (kinectProjMatrix(0, 0) < 0);
 }
 
-
 void KinectProjector::updateCalibration()
 {
     if (calibrationState == CALIBRATION_STATE_FULL_AUTO_CALIBRATION)
     {
         updateFullAutoCalibration();
-    } else if (calibrationState == CALIBRATION_STATE_ROI_AUTO_DETERMINATION){
+    }
+    else if (calibrationState == CALIBRATION_STATE_ROI_AUTO_DETERMINATION)
+    {
         updateROIAutoCalibration();
     }
-    //else if (calibrationState == CALIBRATION_STATE_ROI_MANUAL_DETERMINATION)
+    // else if (calibrationState == CALIBRATION_STATE_ROI_MANUAL_DETERMINATION)
     //{
- //       updateROIManualCalibration();
- //   }
-    else if (calibrationState == CALIBRATION_STATE_PROJ_KINECT_AUTO_CALIBRATION){
+    //       updateROIManualCalibration();
+    //   }
+    else if (calibrationState == CALIBRATION_STATE_PROJ_KINECT_AUTO_CALIBRATION)
+    {
         updateProjKinectAutoCalibration();
-    }else if (calibrationState == CALIBRATION_STATE_PROJ_KINECT_MANUAL_CALIBRATION) {
+    }
+    else if (calibrationState == CALIBRATION_STATE_PROJ_KINECT_MANUAL_CALIBRATION)
+    {
         updateProjKinectManualCalibration();
     }
 }
@@ -517,7 +558,7 @@ void KinectProjector::updateFullAutoCalibration()
 {
     if (fullCalibState == FULL_CALIBRATION_STATE_ROI_DETERMINATION)
     {
-//        updateROIAutoCalibration();
+        //        updateROIAutoCalibration();
         updateROIFromFile();
         if (ROICalibState == ROI_CALIBRATION_STATE_DONE)
         {
@@ -537,7 +578,7 @@ void KinectProjector::updateFullAutoCalibration()
 
 void KinectProjector::updateROIAutoCalibration()
 {
-    //updateROIFromColorImage();
+    // updateROIFromColorImage();
     updateROIFromDepthImage();
 }
 
@@ -559,64 +600,76 @@ void KinectProjector::updateROIFromCalibration()
     setNewKinectROI();
 }
 
-//TODO: update color image ROI acquisition to use calibration modal
+// TODO: update color image ROI acquisition to use calibration modal
 void KinectProjector::updateROIFromColorImage()
 {
     fboProjWindow.begin();
     ofBackground(255);
     fboProjWindow.end();
-    if (ROICalibState == ROI_CALIBRATION_STATE_INIT) { // set kinect to max depth range
+    if (ROICalibState == ROI_CALIBRATION_STATE_INIT)
+    { // set kinect to max depth range
         ROICalibState = ROI_CALIBRATION_STATE_MOVE_UP;
         large = ofPolyline();
         threshold = 90;
-        
-    } else if (ROICalibState == ROI_CALIBRATION_STATE_MOVE_UP) {
-        while (threshold < 255){
+    }
+    else if (ROICalibState == ROI_CALIBRATION_STATE_MOVE_UP)
+    {
+        while (threshold < 255)
+        {
             kinectColorImage.setROI(0, 0, kinectRes.x, kinectRes.y);
             thresholdedImage = kinectColorImage;
             cvThreshold(thresholdedImage.getCvImage(), thresholdedImage.getCvImage(), threshold, 255, CV_THRESH_BINARY_INV);
-            contourFinder.findContours(thresholdedImage, 12, kinectRes.x*kinectRes.y, 5, true);
+            contourFinder.findContours(thresholdedImage, 12, kinectRes.x * kinectRes.y, 5, true);
             ofPolyline small = ofPolyline();
-            for (int i = 0; i < contourFinder.nBlobs; i++) {
+            for (int i = 0; i < contourFinder.nBlobs; i++)
+            {
                 ofxCvBlob blobContour = contourFinder.blobs[i];
-                if (blobContour.hole) {
+                if (blobContour.hole)
+                {
                     ofPolyline poly = ofPolyline(blobContour.pts);
-                    if (poly.inside(kinectRes.x/2, kinectRes.y/2))
+                    if (poly.inside(kinectRes.x / 2, kinectRes.y / 2))
                     {
-                        if (small.size() == 0 || poly.getArea() < small.getArea()) {
+                        if (small.size() == 0 || poly.getArea() < small.getArea())
+                        {
                             small = poly;
                         }
                     }
                 }
             }
-            ofLogVerbose("KinectProjector") << "KinectProjector.updateROIFromColorImage(): small.getArea(): " << small.getArea() ;
-            ofLogVerbose("KinectProjector") << "KinectProjector.updateROIFromColorImage(): large.getArea(): " << large.getArea() ;
+            ofLogVerbose("KinectProjector") << "KinectProjector.updateROIFromColorImage(): small.getArea(): " << small.getArea();
+            ofLogVerbose("KinectProjector") << "KinectProjector.updateROIFromColorImage(): large.getArea(): " << large.getArea();
             if (large.getArea() < small.getArea())
             {
-                ofLogVerbose("KinectProjector") << "updateROIFromColorImage(): We take the largest contour line surroundings the center of the screen at all threshold level" ;
+                ofLogVerbose("KinectProjector") << "updateROIFromColorImage(): We take the largest contour line surroundings the center of the screen at all threshold level";
                 large = small;
             }
-            threshold+=1;
+            threshold += 1;
         }
         kinectROI = large.getBoundingBox();
         kinectROI.standardize();
-        ofLogVerbose("KinectProjector") << "updateROIFromColorImage(): kinectROI : " << kinectROI ;
+        ofLogVerbose("KinectProjector") << "updateROIFromColorImage(): kinectROI : " << kinectROI;
         ROICalibState = ROI_CALIBRATION_STATE_DONE;
         setNewKinectROI();
-    } else if (ROICalibState == ROI_CALIBRATION_STATE_DONE){
+    }
+    else if (ROICalibState == ROI_CALIBRATION_STATE_DONE)
+    {
     }
 }
 
-void KinectProjector::updateROIFromDepthImage(){
+void KinectProjector::updateROIFromDepthImage()
+{
     int counter = 0;
-    if (ROICalibState == ROI_CALIBRATION_STATE_INIT) {
+    if (ROICalibState == ROI_CALIBRATION_STATE_INIT)
+    {
         calibModal->setMessage("Enlarging acquisition area & resetting buffers.");
         setMaxKinectGrabberROI();
         calibModal->setMessage("Stabilizing acquisition.");
         ROICalibState = ROI_CALIBRATION_STATE_READY_TO_MOVE_UP;
-    } else if (ROICalibState == ROI_CALIBRATION_STATE_READY_TO_MOVE_UP && imageStabilized) {
+    }
+    else if (ROICalibState == ROI_CALIBRATION_STATE_READY_TO_MOVE_UP && imageStabilized)
+    {
         calibModal->setMessage("Scanning depth field to find sandbox walls.");
-        ofLogVerbose("KinectProjector") << "updateROIFromDepthImage(): ROI_CALIBRATION_STATE_READY_TO_MOVE_UP: got a stable depth image" ;
+        ofLogVerbose("KinectProjector") << "updateROIFromDepthImage(): ROI_CALIBRATION_STATE_READY_TO_MOVE_UP: got a stable depth image";
         ROICalibState = ROI_CALIBRATION_STATE_MOVE_UP;
         large = ofPolyline();
         ofxCvFloatImage temp;
@@ -625,21 +678,27 @@ void KinectProjector::updateROIFromDepthImage(){
         temp.convertToRange(0, 1);
         thresholdedImage.setFromPixels(temp.getFloatPixelsRef());
         threshold = 0; // We go from the higher distance to the kinect (lower position) to the lower distance
-    } else if (ROICalibState == ROI_CALIBRATION_STATE_MOVE_UP) {
-    ofLogVerbose("KinectProjector") << "updateROIFromDepthImage(): ROI_CALIBRATION_STATE_MOVE_UP";
-        while (threshold < 255){
-            cvThreshold(thresholdedImage.getCvImage(), thresholdedImage.getCvImage(), 255-threshold, 255, CV_THRESH_TOZERO_INV);
+    }
+    else if (ROICalibState == ROI_CALIBRATION_STATE_MOVE_UP)
+    {
+        ofLogVerbose("KinectProjector") << "updateROIFromDepthImage(): ROI_CALIBRATION_STATE_MOVE_UP";
+        while (threshold < 255)
+        {
+            cvThreshold(thresholdedImage.getCvImage(), thresholdedImage.getCvImage(), 255 - threshold, 255, CV_THRESH_TOZERO_INV);
             thresholdedImage.updateTexture();
-//            SaveDepthDebugImageNative(thresholdedImage, counter++);
-            contourFinder.findContours(thresholdedImage, 12, kinectRes.x*kinectRes.y, 5, true, false);
+            //            SaveDepthDebugImageNative(thresholdedImage, counter++);
+            contourFinder.findContours(thresholdedImage, 12, kinectRes.x * kinectRes.y, 5, true, false);
             ofPolyline small = ofPolyline();
-            for (int i = 0; i < contourFinder.nBlobs; i++) {
+            for (int i = 0; i < contourFinder.nBlobs; i++)
+            {
                 ofxCvBlob blobContour = contourFinder.blobs[i];
-                if (blobContour.hole) {
+                if (blobContour.hole)
+                {
                     ofPolyline poly = ofPolyline(blobContour.pts);
-                    if (poly.inside(kinectRes.x/2, kinectRes.y/2))
+                    if (poly.inside(kinectRes.x / 2, kinectRes.y / 2))
                     {
-                        if (small.size() == 0 || poly.getArea() < small.getArea()) {
+                        if (small.size() == 0 || poly.getArea() < small.getArea())
+                        {
                             small = poly;
                         }
                     }
@@ -647,10 +706,10 @@ void KinectProjector::updateROIFromDepthImage(){
             }
             if (large.getArea() < small.getArea())
             {
-                ofLogVerbose("KinectProjector") << "updateROIFromDepthImage(): updating ROI" ;
+                ofLogVerbose("KinectProjector") << "updateROIFromDepthImage(): updating ROI";
                 large = small;
             }
-            threshold+=1;
+            threshold += 1;
         }
         if (large.getArea() == 0)
         {
@@ -659,26 +718,30 @@ void KinectProjector::updateROIFromDepthImage(){
             confirmModal->setTitle("Calibration failed");
             confirmModal->setMessage("The sandbox walls could not be found.");
             confirmModal->show();
-//            calibrating = false;
+            //            calibrating = false;
             applicationState = APPLICATION_STATE_SETUP;
             updateStatusGUI();
-        } else {
+        }
+        else
+        {
             kinectROI = large.getBoundingBox();
-//            insideROIPoly = large.getResampledBySpacing(10);
+            //            insideROIPoly = large.getResampledBySpacing(10);
             kinectROI.standardize();
             calibModal->setMessage("Sand area successfully detected");
-            ofLogVerbose("KinectProjector") << "updateROIFromDepthImage(): final kinectROI : " << kinectROI ;
+            ofLogVerbose("KinectProjector") << "updateROIFromDepthImage(): final kinectROI : " << kinectROI;
             setNewKinectROI();
             if (calibrationState == CALIBRATION_STATE_ROI_AUTO_DETERMINATION)
             {
                 applicationState = APPLICATION_STATE_SETUP;
-            //                calibrating = false;
+                //                calibrating = false;
                 calibModal->hide();
                 updateStatusGUI();
             }
         }
         ROICalibState = ROI_CALIBRATION_STATE_DONE;
-    } else if (ROICalibState == ROI_CALIBRATION_STATE_DONE){
+    }
+    else if (ROICalibState == ROI_CALIBRATION_STATE_DONE)
+    {
     }
 }
 
@@ -691,7 +754,7 @@ void KinectProjector::updateROIFromFile()
     if (xml.load(settingsFile))
     {
         auto kinectSettings = xml.find("KINECTSETTINGS").getFirst();
-//        xml.setTo("KINECTSETTINGS");
+        //        xml.setTo("KINECTSETTINGS");
         kinectROI = kinectSettings.getChild("kinectROI").getValue<ofRectangle>();
         setNewKinectROI();
         ROICalibState = ROI_CALIBRATION_STATE_DONE;
@@ -702,7 +765,8 @@ void KinectProjector::updateROIFromFile()
     updateStatusGUI();
 }
 
-void KinectProjector::setMaxKinectGrabberROI(){
+void KinectProjector::setMaxKinectGrabberROI()
+{
     updateKinectGrabberROI(ofRectangle(0, 0, kinectRes.x, kinectRes.y));
 }
 
@@ -715,45 +779,43 @@ void KinectProjector::setNewKinectROI()
     kinectROI.y = static_cast<int>(kinectROI.y);
     kinectROI.width = static_cast<int>(kinectROI.width);
     kinectROI.height = static_cast<int>(kinectROI.height);
-    
+
     ofLogVerbose("KinectProjector") << "setNewKinectROI : " << kinectROI;
 
     // Update states variables
     ROIcalibrated = true;
-//    ROIUpdated = true;
+    //    ROIUpdated = true;
 
-    //saveCalibrationAndSettings(); //commented out so can load settings from file without overwrite. STH 2024-0318
+    // saveCalibrationAndSettings(); //commented out so can load settings from file without overwrite. STH 2024-0318
     updateKinectGrabberROI(kinectROI);
     updateStatusGUI();
 }
 
-void KinectProjector::updateKinectGrabberROI(ofRectangle ROI){
-    //robotconscience NI2 code removed. 17 Feb 2024 STH
-    grabber.performInThread([ROI](KinectGrabber & kg) {
-        kg.setKinectROI(ROI);
-    });
-//    while (kinectgrabber.isImageStabilized()){
-//    } // Wait for kinectgrabber to reset buffers
+void KinectProjector::updateKinectGrabberROI(ofRectangle ROI)
+{
+    // robotconscience NI2 code removed. 17 Feb 2024 STH
+    grabber.performInThread([ROI](KinectGrabber &kg)
+                            { kg.setKinectROI(ROI); });
+    //    while (kinectgrabber.isImageStabilized()){
+    //    } // Wait for kinectgrabber to reset buffers
     imageStabilized = false; // Now we can wait for a clean new depth frame
 }
 
 std::string KinectProjector::GetTimeAndDateString()
 {
-    time_t t = time(0);   // get time now
-    struct tm * now = localtime(&t);
+    time_t t = time(0); // get time now
+    struct tm *now = localtime(&t);
     std::stringstream ss;
 
     ss << now->tm_mday << '-'
-        << (now->tm_mon + 1) << '-'
-        << (now->tm_year + 1900) << '-'
-        << now->tm_hour << '-'
-        << now->tm_min << '-'
-        << now->tm_sec;
+       << (now->tm_mon + 1) << '-'
+       << (now->tm_year + 1900) << '-'
+       << now->tm_hour << '-'
+       << now->tm_min << '-'
+       << now->tm_sec;
 
     return ss.str();
 }
-
-
 
 bool KinectProjector::savePointPair()
 {
@@ -764,7 +826,7 @@ bool KinectProjector::savePointPair()
 
     for (int i = 0; i < pairsKinect.size(); i++)
     {
-        ppKo << pairsKinect[i].x << " " << pairsKinect[i].y << " " << pairsKinect[i].z << " " << i <<  std::endl;
+        ppKo << pairsKinect[i].x << " " << pairsKinect[i].y << " " << pairsKinect[i].z << " " << i << std::endl;
     }
 
     for (int i = 0; i < pairsProjector.size(); i++)
@@ -774,15 +836,13 @@ bool KinectProjector::savePointPair()
     return true;
 }
 
-
 void KinectProjector::updateProjKinectAutoCalibration()
 {
     if (autoCalibState == AUTOCALIB_STATE_INIT_FIRST_PLANE)
     {
-        //robotconscience NI2 code removed. 17 Feb 2024 STH
-        grabber.performInThread([](KinectGrabber & kg) {
-            kg.setMaxOffset(0);
-        });
+        // robotconscience NI2 code removed. 17 Feb 2024 STH
+        grabber.performInThread([](KinectGrabber &kg)
+                                { kg.setMaxOffset(0); });
         calibrationText = "Stabilizing acquisition";
         autoCalibState = AUTOCALIB_STATE_INIT_POINT;
         updateStatusGUI();
@@ -805,22 +865,22 @@ void KinectProjector::updateProjKinectAutoCalibration()
         autoCalibPts = new ofPoint[10];
         float cs = 4 * chessboardSize / 3;
         float css = 3 * chessboardSize / 4;
-        ofPoint sc = ofPoint(projRes.x/2,projRes.y/2);
-        
+        ofPoint sc = ofPoint(projRes.x / 2, projRes.y / 2);
+
         // Prepare 10 locations for the calibration chessboard
         // With a point of (0,0) the chessboard will be placed with the center in  the center of the projector
         // a point of -sc will the chessboard will be placed with the center in the upper left corner
         // Rasmus modified sequence with a center chessboard first to check if everything is working
-        autoCalibPts[0] = ofPoint(0          ,0);                 // Center
-        autoCalibPts[1] = ofPoint(projRes.x-cs,           cs) - sc; // upper right
-        autoCalibPts[2] = ofPoint(projRes.x-cs, projRes.y-cs) - sc; // Lower right
-        autoCalibPts[3] = ofPoint(          cs, projRes.y-cs) - sc; // Lower left
-        autoCalibPts[4] = ofPoint(          cs,           cs)  -sc; // upper left
-        autoCalibPts[5] = ofPoint(0         ,0);                    // Center
-        autoCalibPts[6] = ofPoint(projRes.x-css,         css) - sc; // upper right
-        autoCalibPts[7] = ofPoint(projRes.x-css,projRes.y-css) -sc; // Lower right
-        autoCalibPts[8] = ofPoint(css          ,projRes.y-css) -sc; // Lower left
-        autoCalibPts[9] = ofPoint(css,                    css) - sc; // upper left
+        autoCalibPts[0] = ofPoint(0, 0);                                  // Center
+        autoCalibPts[1] = ofPoint(projRes.x - cs, cs) - sc;               // upper right
+        autoCalibPts[2] = ofPoint(projRes.x - cs, projRes.y - cs) - sc;   // Lower right
+        autoCalibPts[3] = ofPoint(cs, projRes.y - cs) - sc;               // Lower left
+        autoCalibPts[4] = ofPoint(cs, cs) - sc;                           // upper left
+        autoCalibPts[5] = ofPoint(0, 0);                                  // Center
+        autoCalibPts[6] = ofPoint(projRes.x - css, css) - sc;             // upper right
+        autoCalibPts[7] = ofPoint(projRes.x - css, projRes.y - css) - sc; // Lower right
+        autoCalibPts[8] = ofPoint(css, projRes.y - css) - sc;             // Lower left
+        autoCalibPts[9] = ofPoint(css, css) - sc;                         // upper left
 
         currentCalibPts = 0;
         upframe = false;
@@ -828,7 +888,7 @@ void KinectProjector::updateProjKinectAutoCalibration()
         TemporalFrameCounter = 0;
 
         ofPoint dispPt = ofPoint(projRes.x / 2, projRes.y / 2) + autoCalibPts[currentCalibPts]; //
-        drawChessboard(dispPt.x, dispPt.y, chessboardSize); // We can now draw the next chess board
+        drawChessboard(dispPt.x, dispPt.y, chessboardSize);                                     // We can now draw the next chess board
 
         autoCalibState = AUTOCALIB_STATE_NEXT_POINT;
     }
@@ -847,19 +907,19 @@ void KinectProjector::updateProjKinectAutoCalibration()
     else if (autoCalibState == AUTOCALIB_STATE_COMPUTE)
     {
         updateKinectGrabberROI(kinectROI); // Goes back to kinectROI and maxoffset
-        //robotconscience NI2 code removed. 17 Feb 2024 STH
-        grabber.performInThread([this](KinectGrabber & kg) {
-            kg.setMaxOffset(this->maxOffset);
-        });
-        if (pairsKinect.size() == 0) {
-            ofLogVerbose("KinectProjector") << "autoCalib(): Error: No points acquired !!" ;
+        // robotconscience NI2 code removed. 17 Feb 2024 STH
+        grabber.performInThread([this](KinectGrabber &kg)
+                                { kg.setMaxOffset(this->maxOffset); });
+        if (pairsKinect.size() == 0)
+        {
+            ofLogVerbose("KinectProjector") << "autoCalib(): Error: No points acquired !!";
             calibrationText = "Calibration failed: No points acquired";
             applicationState = APPLICATION_STATE_SETUP;
             updateStatusGUI();
         }
         else
         {
-            ofLogVerbose("KinectProjector") << "autoCalib(): Calibrating" ;
+            ofLogVerbose("KinectProjector") << "autoCalib(): Calibrating";
             kpt->calibrate(pairsKinect, pairsProjector);
             kinectProjMatrix = kpt->getProjectionMatrix();
 
@@ -884,12 +944,13 @@ void KinectProjector::updateProjKinectAutoCalibration()
             applicationState = APPLICATION_STATE_SETUP;
             calibrationText = "Calibration successful";
 
-            //saveCalibrationAndSettings(); // Already done in updateROIFromCalibration
+            // saveCalibrationAndSettings(); // Already done in updateROIFromCalibration
             if (kpt->saveCalibration("settings/calibration.xml"))
             {
                 ofLogVerbose("KinectProjector") << "update(): initialisation: Calibration saved ";
             }
-            else {
+            else
+            {
                 ofLogVerbose("KinectProjector") << "update(): initialisation: Calibration could not be saved ";
             }
             updateStatusGUI();
@@ -918,7 +979,7 @@ double KinectProjector::ComputeReprojectionError(bool WriteFile)
         ofVec4f wc = pairsKinect[i];
         wc.w = 1;
 
-        ofVec4f screenPos = kinectProjMatrix*wc;
+        ofVec4f screenPos = kinectProjMatrix * wc;
         ofVec2f projectedPoint(screenPos.x / screenPos.z, screenPos.y / screenPos.z);
         ofVec2f projP = pairsProjector[i];
 
@@ -937,14 +998,14 @@ double KinectProjector::ComputeReprojectionError(bool WriteFile)
             ofVec4f wc = pairsKinect[i];
             wc.w = 1;
 
-            ofVec4f screenPos = kinectProjMatrix*wc;
+            ofVec4f screenPos = kinectProjMatrix * wc;
             ofVec2f projectedPoint(screenPos.x / screenPos.z, screenPos.y / screenPos.z);
             ofVec2f projP = pairsProjector[i];
 
             double D = sqrt((projectedPoint.x - projP.x) * (projectedPoint.x - projP.x) + (projectedPoint.y - projP.y) * (projectedPoint.y - projP.y));
 
             fost2 << wc.x << ", " << wc.y << ", " << wc.z << ", "
-                << projP.x << ", " << projP.y << ", " << projectedPoint.x << ", " << projectedPoint.y << ", " << D << std::endl;
+                  << projP.x << ", " << projP.y << ", " << projectedPoint.x << ", " << projectedPoint.y << ", " << D << std::endl;
         }
     }
 
@@ -974,7 +1035,7 @@ void KinectProjector::CalibrateNextPoint()
             tempImage.setFromPixels(TemporalFrameFilter.getMedianFilteredImage(), kinectColorImage.width, kinectColorImage.height);
         if (TemporalFilteringType == 1)
             tempImage.setFromPixels(TemporalFrameFilter.getAverageFilteredColImage(), kinectColorImage.width, kinectColorImage.height);
-        
+
         ProcessChessBoardInput(tempImage);
 
         if (DumpDebugFiles)
@@ -985,14 +1046,14 @@ void KinectProjector::CalibrateNextPoint()
 
         cvGrayImage = ofxCv::toCv(tempImage.getPixels());
 
-        cv::Rect tempROI((int)kinectROI.x, (int)kinectROI.y,(int)kinectROI.width, (int)kinectROI.height);
+        cv::Rect tempROI((int)kinectROI.x, (int)kinectROI.y, (int)kinectROI.width, (int)kinectROI.height);
         cv::Mat cvGrayROI = cvGrayImage(tempROI);
 
         cv::Size patternSize = cv::Size(chessboardX - 1, chessboardY - 1);
-    //    int chessFlags = cv::CALIB_CB_ADAPTIVE_THRESH + cv::CALIB_CB_FAST_CHECK;
+        //    int chessFlags = cv::CALIB_CB_ADAPTIVE_THRESH + cv::CALIB_CB_FAST_CHECK;
         int chessFlags = 0;
 
-        //bool foundChessboard = findChessboardCorners(cvGrayImage, patternSize, cvPoints, chessFlags);
+        // bool foundChessboard = findChessboardCorners(cvGrayImage, patternSize, cvPoints, chessFlags);
         bool foundChessboard = findChessboardCorners(cvGrayROI, patternSize, cvPoints, chessFlags);
 
         if (!foundChessboard)
@@ -1010,8 +1071,8 @@ void KinectProjector::CalibrateNextPoint()
                 cvPoints[i].y += tempROI.y;
             }
 
-            cornerSubPix(cvGrayImage, cvPoints, cv::Size(2, 2), cv::Size(-1, -1),   // Rasmus: changed search size to 2 from 11 - since this caused false findings
-                cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
+            cornerSubPix(cvGrayImage, cvPoints, cv::Size(2, 2), cv::Size(-1, -1), // Rasmus: changed search size to 2 from 11 - since this caused false findings
+                         cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
 
             drawChessboardCorners(cvRgbImage, patternSize, cv::Mat(cvPoints), foundChessboard);
 
@@ -1034,7 +1095,7 @@ void KinectProjector::CalibrateNextPoint()
                 trials = 0;
                 currentCalibPts++;
                 ofPoint dispPt = ofPoint(projRes.x / 2, projRes.y / 2) + autoCalibPts[currentCalibPts]; // Compute next chessboard position
-                drawChessboard(dispPt.x, dispPt.y, chessboardSize); // We can now draw the next chess board
+                drawChessboard(dispPt.x, dispPt.y, chessboardSize);                                     // We can now draw the next chess board
             }
             else
             {
@@ -1047,7 +1108,7 @@ void KinectProjector::CalibrateNextPoint()
                     ofLogVerbose("KinectProjector") << "autoCalib(): Chessboard could not be found moving chessboard closer to center ";
                     autoCalibPts[currentCalibPts] = 4 * autoCalibPts[currentCalibPts] / 5;
                     ofPoint dispPt = ofPoint(projRes.x / 2, projRes.y / 2) + autoCalibPts[currentCalibPts]; // Compute next chessboard position
-                    drawChessboard(dispPt.x, dispPt.y, chessboardSize); // We can now draw the next chess board
+                    drawChessboard(dispPt.x, dispPt.y, chessboardSize);                                     // We can now draw the next chess board
                     trials = 0;
                 }
             }
@@ -1064,7 +1125,7 @@ void KinectProjector::CalibrateNextPoint()
                 autoCalibPts[currentCalibPts] = 3 * autoCalibPts[currentCalibPts] / 4;
 
                 ofPoint dispPt = ofPoint(projRes.x / 2, projRes.y / 2) + autoCalibPts[currentCalibPts]; // Compute next chessboard position
-                drawChessboard(dispPt.x, dispPt.y, chessboardSize); // We can now draw the next chess board
+                drawChessboard(dispPt.x, dispPt.y, chessboardSize);                                     // We can now draw the next chess board
                 trials = 0;
             }
         }
@@ -1087,16 +1148,18 @@ void KinectProjector::CalibrateNextPoint()
     }
 }
 
-//TODO: Add manual Prj Kinect calibration
-void KinectProjector::updateProjKinectManualCalibration(){
+// TODO: Add manual Prj Kinect calibration
+void KinectProjector::updateProjKinectManualCalibration()
+{
     // Draw a Chessboard
     drawChessboard(ofGetMouseX(), ofGetMouseY(), chessboardSize);
     // Try to find the chess board on the kinect color image
     cvRgbImage = ofxCv::toCv(kinectColorImage.getPixels());
-    cv::Size patternSize = cv::Size(chessboardX-1, chessboardY-1);
+    cv::Size patternSize = cv::Size(chessboardX - 1, chessboardY - 1);
     int chessFlags = cv::CALIB_CB_ADAPTIVE_THRESH + cv::CALIB_CB_FAST_CHECK;
     bool foundChessboard = findChessboardCorners(cvRgbImage, patternSize, cvPoints, chessFlags);
-    if(foundChessboard) {
+    if (foundChessboard)
+    {
         cv::Mat gray;
         cvtColor(cvRgbImage, gray, CV_RGB2GRAY);
         cornerSubPix(gray, cvPoints, cv::Size(11, 11), cv::Size(-1, -1),
@@ -1112,27 +1175,30 @@ void KinectProjector::updateBasePlane()
 
     ofRectangle smallROI = kinectROI;
     smallROI.scaleFromCenter(0.75); // Reduce ROI to avoid problems with borders
-    ofLogVerbose("KinectProjector") << "updateBasePlane(): smallROI: " << smallROI ;
+    ofLogVerbose("KinectProjector") << "updateBasePlane(): smallROI: " << smallROI;
     int sw = static_cast<int>(smallROI.width);
     int sh = static_cast<int>(smallROI.height);
     int sl = static_cast<int>(smallROI.getLeft());
     int st = static_cast<int>(smallROI.getTop());
-    ofLogVerbose("KinectProjector") << "updateBasePlane(): sw: " << sw << " sh : " << sh << " sl : " << sl << " st : " << st << " sw*sh : " << sw*sh ;
-    if (sw*sh == 0) {
-        ofLogVerbose("KinectProjector") << "updateBasePlane(): smallROI is null, cannot compute base plane normal" ;
+    ofLogVerbose("KinectProjector") << "updateBasePlane(): sw: " << sw << " sh : " << sh << " sl : " << sl << " st : " << st << " sw*sh : " << sw * sh;
+    if (sw * sh == 0)
+    {
+        ofLogVerbose("KinectProjector") << "updateBasePlane(): smallROI is null, cannot compute base plane normal";
         return;
     }
     ofVec4f pt;
-    ofVec3f* points;
-    points = new ofVec3f[sw*sh];
-    ofLogVerbose("KinectProjector") << "updateBasePlane(): Computing points in smallROI : " << sw*sh ;
-    for (int x = 0; x<sw; x++){
-        for (int y = 0; y<sh; y ++){
-            points[x+y*sw] = kinectCoordToWorldCoord(x+sl, y+st);
+    ofVec3f *points;
+    points = new ofVec3f[sw * sh];
+    ofLogVerbose("KinectProjector") << "updateBasePlane(): Computing points in smallROI : " << sw * sh;
+    for (int x = 0; x < sw; x++)
+    {
+        for (int y = 0; y < sh; y++)
+        {
+            points[x + y * sw] = kinectCoordToWorldCoord(x + sl, y + st);
         }
     }
-    ofLogVerbose("KinectProjector") << "updateBasePlane(): Computing plane from points" ;
-    basePlaneEq = plane_from_points(points, sw*sh);
+    ofLogVerbose("KinectProjector") << "updateBasePlane(): Computing plane from points";
+    basePlaneEq = plane_from_points(points, sw * sh);
     if (basePlaneEq.x == 0 && basePlaneEq.y == 0 && basePlaneEq.z == 0)
     {
         ofLogVerbose("KinectProjector") << "updateBasePlane(): plane_from_points could not compute basePlane";
@@ -1140,7 +1206,7 @@ void KinectProjector::updateBasePlane()
     }
 
     basePlaneNormal = ofVec3f(basePlaneEq);
-    basePlaneOffset = ofVec3f(0,0,-basePlaneEq.w);
+    basePlaneOffset = ofVec3f(0, 0, -basePlaneEq.w);
     basePlaneNormalBack = basePlaneNormal;
     basePlaneOffsetBack = basePlaneOffset;
     basePlaneUpdated = true;
@@ -1148,69 +1214,80 @@ void KinectProjector::updateBasePlane()
     updateStatusGUI();
 }
 
-void KinectProjector::updateMaxOffset(){
+void KinectProjector::updateMaxOffset()
+{
     ofRectangle smallROI = kinectROI;
     smallROI.scaleFromCenter(0.75); // Reduce ROI to avoid problems with borders
-    ofLogVerbose("KinectProjector") << "updateMaxOffset(): smallROI: " << smallROI ;
+    ofLogVerbose("KinectProjector") << "updateMaxOffset(): smallROI: " << smallROI;
     int sw = static_cast<int>(smallROI.width);
     int sh = static_cast<int>(smallROI.height);
     int sl = static_cast<int>(smallROI.getLeft());
     int st = static_cast<int>(smallROI.getTop());
-    ofLogVerbose("KinectProjector") << "updateMaxOffset(): sw: " << sw << " sh : " << sh << " sl : " << sl << " st : " << st << " sw*sh : " << sw*sh ;
-    if (sw*sh == 0) {
-        ofLogVerbose("KinectProjector") << "updateMaxOffset(): smallROI is null, cannot compute base plane normal" ;
+    ofLogVerbose("KinectProjector") << "updateMaxOffset(): sw: " << sw << " sh : " << sh << " sl : " << sl << " st : " << st << " sw*sh : " << sw * sh;
+    if (sw * sh == 0)
+    {
+        ofLogVerbose("KinectProjector") << "updateMaxOffset(): smallROI is null, cannot compute base plane normal";
         return;
     }
     ofVec4f pt;
-    ofVec3f* points;
-    points = new ofVec3f[sw*sh];
-    ofLogVerbose("KinectProjector") << "updateMaxOffset(): Computing points in smallROI : " << sw*sh ;
-    for (int x = 0; x<sw; x++){
-        for (int y = 0; y<sh; y ++){
-            points[x+y*sw] = kinectCoordToWorldCoord(x+sl, y+st);//vertexCcvertexCc;
+    ofVec3f *points;
+    points = new ofVec3f[sw * sh];
+    ofLogVerbose("KinectProjector") << "updateMaxOffset(): Computing points in smallROI : " << sw * sh;
+    for (int x = 0; x < sw; x++)
+    {
+        for (int y = 0; y < sh; y++)
+        {
+            points[x + y * sw] = kinectCoordToWorldCoord(x + sl, y + st); // vertexCcvertexCc;
         }
     }
-    ofLogVerbose("KinectProjector") << "updateMaxOffset(): Computing plane from points" ;
-    ofVec4f eqoff = plane_from_points(points, sw*sh);
-    maxOffset = -eqoff.w-maxOffsetSafeRange;
+    ofLogVerbose("KinectProjector") << "updateMaxOffset(): Computing plane from points";
+    ofVec4f eqoff = plane_from_points(points, sw * sh);
+    maxOffset = -eqoff.w - maxOffsetSafeRange;
     maxOffsetBack = maxOffset;
     // Update max Offset
-    ofLogVerbose("KinectProjector") << "updateMaxOffset(): maxOffset" << maxOffset ;
-    //robotconscience NI2 code removed. 17 Feb 2024 STH
-    grabber.performInThread([this](KinectGrabber & kg) {
-        kg.setMaxOffset(this->maxOffset);
-    });
+    ofLogVerbose("KinectProjector") << "updateMaxOffset(): maxOffset" << maxOffset;
+    // robotconscience NI2 code removed. 17 Feb 2024 STH
+    grabber.performInThread([this](KinectGrabber &kg)
+                            { kg.setMaxOffset(this->maxOffset); });
 }
 
-bool KinectProjector::addPointPair() {
+bool KinectProjector::addPointPair()
+{
     bool okchess = true;
     string resultMessage;
-    ofLogVerbose("KinectProjector") << "addPointPair(): Adding point pair in kinect world coordinates" ;
+    ofLogVerbose("KinectProjector") << "addPointPair(): Adding point pair in kinect world coordinates";
     int nDepthPoints = 0;
-    for (int i=0; i<cvPoints.size(); i++) {
+    for (int i = 0; i < cvPoints.size(); i++)
+    {
         ofVec3f worldPoint = kinectCoordToWorldCoord(cvPoints[i].x, cvPoints[i].y);
-        if (worldPoint.z > 0)   nDepthPoints++;
+        if (worldPoint.z > 0)
+            nDepthPoints++;
     }
-    if (nDepthPoints == (chessboardX-1)*(chessboardY-1)) {
-        for (int i=0; i<cvPoints.size(); i++) {
+    if (nDepthPoints == (chessboardX - 1) * (chessboardY - 1))
+    {
+        for (int i = 0; i < cvPoints.size(); i++)
+        {
             ofVec3f worldPoint = kinectCoordToWorldCoord(cvPoints[i].x, cvPoints[i].y);
             pairsKinect.push_back(worldPoint);
             pairsProjector.push_back(currentProjectorPoints[i]);
         }
-        resultMessage = "addPointPair(): Added " + ofToString((chessboardX-1)*(chessboardY-1)) + " points pairs.";
+        resultMessage = "addPointPair(): Added " + ofToString((chessboardX - 1) * (chessboardY - 1)) + " points pairs.";
         if (DumpDebugFiles)
         {
             savePointPair();
         }
-    } else {
+    }
+    else
+    {
         resultMessage = "addPointPair(): Points not added because not all chessboard\npoints' depth known. Try re-positionining.";
         okchess = false;
     }
-    ofLogVerbose("KinectProjector") << resultMessage ;
+    ofLogVerbose("KinectProjector") << resultMessage;
     return okchess;
 }
 
-void KinectProjector::askToFlattenSand(){
+void KinectProjector::askToFlattenSand()
+{
     fboProjWindow.begin();
     ofBackground(255);
     fboProjWindow.end();
@@ -1219,11 +1296,13 @@ void KinectProjector::askToFlattenSand(){
     waitingForFlattenSand = true;
 }
 
-void KinectProjector::drawProjectorWindow(){
-    fboProjWindow.draw(0,0);
+void KinectProjector::drawProjectorWindow()
+{
+    fboProjWindow.draw(0, 0);
 }
 
-void KinectProjector::drawMainWindow(float x, float y, float width, float height){
+void KinectProjector::drawMainWindow(float x, float y, float width, float height)
+{
 
     bool forceScale = false;
     if (forceScale)
@@ -1242,30 +1321,35 @@ void KinectProjector::drawMainWindow(float x, float y, float width, float height
     }
 }
 
-void KinectProjector::drawChessboard(int x, int y, int chessboardSize) {
+void KinectProjector::drawChessboard(int x, int y, int chessboardSize)
+{
     fboProjWindow.begin();
     ofFill();
     // Draw the calibration chess board on the projector window
     float w = chessboardSize / chessboardX;
     float h = chessboardSize / chessboardY;
-    
-    float xf = x-chessboardSize/2; // x and y are chess board center size
-    float yf = y-chessboardSize/2;
-    
+
+    float xf = x - chessboardSize / 2; // x and y are chess board center size
+    float yf = y - chessboardSize / 2;
+
     currentProjectorPoints.clear();
-    
+
     ofClear(255, 255, 255, 0);
     ofBackground(255);
     ofSetColor(0);
     ofTranslate(xf, yf);
-    for (int j=0; j<chessboardY; j++) {
-        for (int i=0; i<chessboardX; i++) {
+    for (int j = 0; j < chessboardY; j++)
+    {
+        for (int i = 0; i < chessboardX; i++)
+        {
             int x0 = ofMap(i, 0, chessboardX, 0, chessboardSize);
             int y0 = ofMap(j, 0, chessboardY, 0, chessboardSize);
-            if (j>0 && i>0) {
-                currentProjectorPoints.push_back(ofVec2f(xf+x0, yf+y0));
+            if (j > 0 && i > 0)
+            {
+                currentProjectorPoints.push_back(ofVec2f(xf + x0, yf + y0));
             }
-            if ((i+j)%2==0) ofDrawRectangle(x0, y0, w, h);
+            if ((i + j) % 2 == 0)
+                ofDrawRectangle(x0, y0, w, h);
         }
     }
     ofSetColor(255);
@@ -1275,21 +1359,21 @@ void KinectProjector::drawChessboard(int x, int y, int chessboardSize) {
 void KinectProjector::drawGradField()
 {
     ofClear(255, 0);
-    for(int rowPos=0; rowPos< gradFieldrows ; rowPos++)
+    for (int rowPos = 0; rowPos < gradFieldrows; rowPos++)
     {
-        for(int colPos=0; colPos< gradFieldcols ; colPos++)
+        for (int colPos = 0; colPos < gradFieldcols; colPos++)
         {
-            float x = colPos*gradFieldResolution + gradFieldResolution/2;
-            float y = rowPos*gradFieldResolution  + gradFieldResolution/2;
+            float x = colPos * gradFieldResolution + gradFieldResolution / 2;
+            float y = rowPos * gradFieldResolution + gradFieldResolution / 2;
             ofVec2f projectedPoint = kinectCoordToProjCoord(x, y);
             int ind = colPos + rowPos * gradFieldcols;
             ofVec2f v2 = gradField[ind];
             v2 *= arrowLength;
 
-            ofSetColor(255,0,0,255);
+            ofSetColor(255, 0, 0, 255);
             if (ind == fishInd)
-                ofSetColor(0,255,0,255);
-            
+                ofSetColor(0, 255, 0, 255);
+
             drawArrow(projectedPoint, v2);
         }
     }
@@ -1297,21 +1381,23 @@ void KinectProjector::drawGradField()
 
 void KinectProjector::drawArrow(ofVec2f projectedPoint, ofVec2f v1)
 {
-    float angle = ofRadToDeg(atan2(v1.y,v1.x));
+    float angle = ofRadToDeg(atan2(v1.y, v1.x));
     float length = v1.length();
     ofFill();
     ofPushMatrix();
     ofTranslate(projectedPoint);
     ofRotate(angle);
-    ofSetColor(255,0,0,255);
+    ofSetColor(255, 0, 0, 255);
     ofDrawLine(0, 0, length, 0);
-    ofDrawLine(length, 0, length-7, 5);
-    ofDrawLine(length, 0, length-7, -5);
+    ofDrawLine(length, 0, length - 7, 5);
+    ofDrawLine(length, 0, length - 7, -5);
     ofPopMatrix();
 }
 
-void KinectProjector::updateNativeScale(float scaleMin, float scaleMax){
-    FilteredDepthImage.setNativeScale(scaleMin, scaleMax);
+void KinectProjector::updateNativeScale(float scaleMin, float scaleMax)
+{
+    if (!grabber.isKinectSimulated())
+        FilteredDepthImage.setNativeScale(scaleMin, scaleMax);
 }
 
 ofVec2f KinectProjector::kinectCoordToProjCoord(float x, float y) // x, y in kinect pixel coord
@@ -1324,7 +1410,7 @@ ofVec2f KinectProjector::kinectCoordToProjCoord(float x, float y, float z)
     ofVec4f kc = ofVec2f(x, y);
     kc.z = z;
     kc.w = 1;
-    ofVec4f wc = kinectWorldMatrix*kc*kc.z;
+    ofVec4f wc = kinectWorldMatrix * kc * kc.z;
 
     return worldCoordToProjCoord(wc);
 }
@@ -1333,25 +1419,25 @@ ofVec2f KinectProjector::worldCoordToProjCoord(ofVec3f vin)
 {
     ofVec4f wc = vin;
     wc.w = 1;
-    ofVec4f screenPos = kinectProjMatrix*wc;
-    ofVec2f projectedPoint(screenPos.x/screenPos.z, screenPos.y/screenPos.z);
+    ofVec4f screenPos = kinectProjMatrix * wc;
+    ofVec2f projectedPoint(screenPos.x / screenPos.z, screenPos.y / screenPos.z);
     return projectedPoint;
 }
 
 ofVec3f KinectProjector::projCoordAndWorldZToWorldCoord(float projX, float projY, float worldZ)
 {
-    float a = kinectProjMatrix(0, 0) - kinectProjMatrix(2, 0)*projX;
-    float b = kinectProjMatrix(0, 1) - kinectProjMatrix(2, 1)*projX;
-    float c = (kinectProjMatrix(2, 2)*worldZ + 1)*projX - (kinectProjMatrix(0, 2)*worldZ + kinectProjMatrix(0, 3));
-    float d = kinectProjMatrix(1, 0) - kinectProjMatrix(2, 0)*projY;
-    float e = kinectProjMatrix(1, 1) - kinectProjMatrix(2, 1)*projY;
-    float f = (kinectProjMatrix(2, 2)*worldZ + 1)*projY - (kinectProjMatrix(1, 2)*worldZ + kinectProjMatrix(1, 3));
-    
-    float det = a*e - b*d;
+    float a = kinectProjMatrix(0, 0) - kinectProjMatrix(2, 0) * projX;
+    float b = kinectProjMatrix(0, 1) - kinectProjMatrix(2, 1) * projX;
+    float c = (kinectProjMatrix(2, 2) * worldZ + 1) * projX - (kinectProjMatrix(0, 2) * worldZ + kinectProjMatrix(0, 3));
+    float d = kinectProjMatrix(1, 0) - kinectProjMatrix(2, 0) * projY;
+    float e = kinectProjMatrix(1, 1) - kinectProjMatrix(2, 1) * projY;
+    float f = (kinectProjMatrix(2, 2) * worldZ + 1) * projY - (kinectProjMatrix(1, 2) * worldZ + kinectProjMatrix(1, 3));
+
+    float det = a * e - b * d;
     if (det == 0)
         return ofVec3f(0);
-    float y = (a*f - d*c) / det;
-    float x = (c*e - b*f) / det;
+    float y = (a * f - d * c) / det;
+    float x = (c * e - b * f) / det;
     return ofVec3f(x, y, worldZ);
 }
 
@@ -1370,13 +1456,13 @@ ofVec3f KinectProjector::kinectCoordToWorldCoord(float x, float y) // x, y in ki
     ofVec4f kc = ofVec2f(x, y);
     int ind = static_cast<int>(y) * kinectRes.x + static_cast<int>(x);
     kc.z = FilteredDepthImage.getFloatPixelsRef().getData()[ind];
-    //if (kc.z == 0)
-    //    ofLogVerbose("KinectProjector") << "kinectCoordToWorldCoord z coordinate 0";
-    //if (kc.z == 4000)
-    //    ofLogVerbose("KinectProjector") << "kinectCoordToWorldCoord z coordinate 4000 (invalid)";
+    // if (kc.z == 0)
+    //     ofLogVerbose("KinectProjector") << "kinectCoordToWorldCoord z coordinate 0";
+    // if (kc.z == 4000)
+    //     ofLogVerbose("KinectProjector") << "kinectCoordToWorldCoord z coordinate 4000 (invalid)";
 
     kc.w = 1;
-    ofVec4f wc = kinectWorldMatrix*kc*kc.z;
+    ofVec4f wc = kinectWorldMatrix * kc * kc.z;
     return ofVec3f(wc);
 }
 
@@ -1391,7 +1477,7 @@ ofVec3f KinectProjector::RawKinectCoordToWorldCoord(float x, float y) // x, y in
 {
     ofVec4f kc = ofVec3f(x, y, grabber.getRawDepthAt(static_cast<int>(x), static_cast<int>(y)));
     kc.w = 1;
-    ofVec4f wc = kinectWorldMatrix*kc*kc.z;
+    ofVec4f wc = kinectWorldMatrix * kc * kc.z;
     return ofVec3f(wc);
 }
 
@@ -1408,26 +1494,28 @@ float KinectProjector::elevationToKinectDepth(float elevation, float x, float y)
     ofVec4f wc = kinectCoordToWorldCoord(x, y);
     wc.z = 0;
     wc.w = 1;
-    float kinectDepth = -(basePlaneEq.dot(wc)+elevation)/basePlaneEq.z;
+    float kinectDepth = -(basePlaneEq.dot(wc) + elevation) / basePlaneEq.z;
     return kinectDepth;
 }
 
-ofVec2f KinectProjector::gradientAtKinectCoord(float x, float y){
-    int ind = static_cast<int>(floor(x/gradFieldResolution)) + gradFieldcols*static_cast<int>(floor(y/gradFieldResolution));
+ofVec2f KinectProjector::gradientAtKinectCoord(float x, float y)
+{
+    int ind = static_cast<int>(floor(x / gradFieldResolution)) + gradFieldcols * static_cast<int>(floor(y / gradFieldResolution));
     fishInd = ind;
     return gradField[ind];
 }
 
-void KinectProjector::setupGui(){
+void KinectProjector::setupGui()
+{
     // instantiate and position the gui //
-    gui = new ofxDatGui( ofxDatGuiAnchor::TOP_RIGHT );
+    gui = new ofxDatGui(ofxDatGuiAnchor::TOP_RIGHT);
     gui->addButton("RUN!")->setName("Start Application");
     gui->addBreak();
     gui->addFRM();
     fpsKinectText = gui->addTextInput("Kinect FPS", "0");
     gui->addBreak();
-    
-    auto * advancedFolder = gui->addFolder("Advanced", ofColor::purple);
+
+    auto *advancedFolder = gui->addFolder("Advanced", ofColor::purple);
     advancedFolder->addToggle("Display kinect depth view", drawKinectView)->setName("Draw kinect depth view");
     advancedFolder->addToggle("Display kinect color view", drawKinectColorView)->setName("Draw kinect color view");
     advancedFolder->addToggle("Dump Debug", DumpDebugFiles);
@@ -1442,8 +1530,8 @@ void KinectProjector::setupGui(){
     advancedFolder->addSlider("Vertical offset", -100, 100, 0);
     advancedFolder->addButton("Reset sea level");
     advancedFolder->addBreak();
-    
-    auto * calibrationFolder = gui->addFolder("Calibration", ofColor::darkCyan);
+
+    auto *calibrationFolder = gui->addFolder("Calibration", ofColor::darkCyan);
     calibrationFolder->addButton("Manually define sand region");
     calibrationFolder->addButton("Load sand region from file");
     calibrationFolder->addButton("Load kinect & projector settings");
@@ -1452,16 +1540,16 @@ void KinectProjector::setupGui(){
     calibrationFolder->addToggle("Show ROI on sand", doShowROIonProjector);
 
     //    advancedFolder->addButton("Draw ROI")->setName("Draw ROI");
- //   advancedFolder->addButton("Calibrate")->setName("Full Calibration");
-//    advancedFolder->addButton("Update ROI from calibration");
-//    gui->addButton("Automatically detect sand region");
-//    calibrationFolder->addButton("Manually define sand region");
-//    gui->addButton("Automatically calibrate kinect & projector");
-//    calibrationFolder->addButton("Manually calibrate kinect & projector");
-    
-//    gui->addBreak();
+    //   advancedFolder->addButton("Calibrate")->setName("Full Calibration");
+    //    advancedFolder->addButton("Update ROI from calibration");
+    //    gui->addButton("Automatically detect sand region");
+    //    calibrationFolder->addButton("Manually define sand region");
+    //    gui->addButton("Automatically calibrate kinect & projector");
+    //    calibrationFolder->addButton("Manually calibrate kinect & projector");
+
+    //    gui->addBreak();
     gui->addHeader(":: Settings ::", false);
-    
+
     // once the gui has been assembled, register callbacks to listen for component specific events //
     gui->onButtonEvent(this, &KinectProjector::onButtonEvent);
     gui->onToggleEvent(this, &KinectProjector::onToggleEvent);
@@ -1481,7 +1569,6 @@ void KinectProjector::setupGui(){
     StatusGUI->addHeader(":: Status ::", false);
     StatusGUI->setAutoDraw(false);
 }
-
 
 void KinectProjector::startApplication()
 {
@@ -1510,7 +1597,7 @@ void KinectProjector::startApplication()
     {
         cout << "*****KinectProjector::startApplication() Kinect is not calibrated--trying to Run calibration" << endl;
         ofLogVerbose("KinectProjector") << "KinectProjector.startApplication(): Kinect projector not calibrated - trying to load calibration.xml";
-        //Try to load calibration file if possible
+        // Try to load calibration file if possible
         if (kpt->loadCalibration("settings/calibration.xml"))
         {
             ofLogVerbose("KinectProjector") << "KinectProjector.setup(): Calibration loaded ";
@@ -1532,7 +1619,7 @@ void KinectProjector::startApplication()
     {
         cout << "*****KinectProjector::startApplication() Kinect ROI is not calibrated" << endl;
         ofLogVerbose("KinectProjector") << "KinectProjector.startApplication(): Kinect ROI not calibrated - trying to load kinectProjectorSettings.xml";
-        //Try to load settings file if possible
+        // Try to load settings file if possible
         cout << "*****Line 1527 just before loadSettings" << endl;
         if (loadSettings())
         {
@@ -1546,9 +1633,9 @@ void KinectProjector::startApplication()
             setSpatialFiltering(spatialFiltering);
 
             int nAvg = numAveragingSlots;
-            //robotconscience NI2 code removed. 17 Feb 2024 STH
-            grabber.performInThread([nAvg](KinectGrabber & kg) {
-                kg.setAveragingSlotsNumber(nAvg); });
+            // robotconscience NI2 code removed. 17 Feb 2024 STH
+            grabber.performInThread([nAvg](KinectGrabber &kg)
+                                    { kg.setAveragingSlotsNumber(nAvg); });
 
             updateStatusGUI();
         }
@@ -1593,23 +1680,25 @@ void KinectProjector::startFullCalibration()
     confirmModal->setTitle("Full calibration");
     calibModal->setTitle("Full calibration");
     askToFlattenSand();
-    ofLogVerbose("KinectProjector") << "startFullCalibration(): Starting full calibration" ;
+    ofLogVerbose("KinectProjector") << "startFullCalibration(): Starting full calibration";
     updateStatusGUI();
 }
 
-void KinectProjector::startAutomaticROIDetection(){
+void KinectProjector::startAutomaticROIDetection()
+{
     applicationState = APPLICATION_STATE_CALIBRATING;
     calibrationState = CALIBRATION_STATE_ROI_AUTO_DETERMINATION;
     ROICalibState = ROI_CALIBRATION_STATE_INIT;
-    ofLogVerbose("KinectProjector") << "onButtonEvent(): Finding ROI" ;
+    ofLogVerbose("KinectProjector") << "onButtonEvent(): Finding ROI";
     confirmModal->setTitle("Detect sand region");
     calibModal->setTitle("Detect sand region");
     askToFlattenSand();
-    ofLogVerbose("KinectProjector") << "startAutomaticROIDetection(): starting ROI detection" ;
+    ofLogVerbose("KinectProjector") << "startAutomaticROIDetection(): starting ROI detection";
     updateStatusGUI();
 }
 
-void KinectProjector::startAutomaticKinectProjectorCalibration(){
+void KinectProjector::startAutomaticKinectProjectorCalibration()
+{
     if (!kinectOpened)
     {
         ofLogVerbose("KinectProjector") << "startAutomaticKinectProjectorCalibration(): Kinect not running";
@@ -1636,51 +1725,51 @@ void KinectProjector::startAutomaticKinectProjectorCalibration(){
     confirmModal->setTitle("Calibrate projector");
     calibModal->setTitle("Calibrate projector");
     askToFlattenSand();
-    ofLogVerbose("KinectProjector") << "startAutomaticKinectProjectorCalibration(): Starting autocalib" ;
+    ofLogVerbose("KinectProjector") << "startAutomaticKinectProjectorCalibration(): Starting autocalib";
     updateStatusGUI();
 }
 
-void KinectProjector::setSpatialFiltering(bool sspatialFiltering){
+void KinectProjector::setSpatialFiltering(bool sspatialFiltering)
+{
     spatialFiltering = sspatialFiltering;
-        //robotconscience NI2 code removed. 17 Feb 2024 STH
-        grabber.performInThread([sspatialFiltering](KinectGrabber & kg) {
-        kg.setSpatialFiltering(sspatialFiltering);
-    });
+    // robotconscience NI2 code removed. 17 Feb 2024 STH
+    grabber.performInThread([sspatialFiltering](KinectGrabber &kg)
+                            { kg.setSpatialFiltering(sspatialFiltering); });
     updateStatusGUI();
 }
 
-void KinectProjector::setInPainting(bool inp) {
+void KinectProjector::setInPainting(bool inp)
+{
     doInpainting = inp;
-    //robotconscience NI2 code removed. 17 Feb 2024 STH
-    grabber.performInThread([inp](KinectGrabber & kg) {
-        kg.setInPainting(inp);
-    });
+    // robotconscience NI2 code removed. 17 Feb 2024 STH
+    grabber.performInThread([inp](KinectGrabber &kg)
+                            { kg.setInPainting(inp); });
     updateStatusGUI();
 }
-
 
 void KinectProjector::setFullFrameFiltering(bool ff)
 {
     doFullFrameFiltering = ff;
     ofRectangle ROI = kinectROI;
-    //robotconscience NI2 code removed. 17 Feb 2024 STH
-    grabber.performInThread([ff, ROI](KinectGrabber & kg){
-        kg.setFullFrameFiltering(ff, ROI);
-    });
+    // robotconscience NI2 code removed. 17 Feb 2024 STH
+    grabber.performInThread([ff, ROI](KinectGrabber &kg)
+                            { kg.setFullFrameFiltering(ff, ROI); });
     updateStatusGUI();
 }
 
-void KinectProjector::setFollowBigChanges(bool sfollowBigChanges){
+void KinectProjector::setFollowBigChanges(bool sfollowBigChanges)
+{
     followBigChanges = sfollowBigChanges;
-    //robotconscience NI2 code removed. 17 Feb 2024 STH
-    grabber.performInThread([sfollowBigChanges](KinectGrabber & kg) {
-        kg.setFollowBigChange(sfollowBigChanges);
-    });
+    // robotconscience NI2 code removed. 17 Feb 2024 STH
+    grabber.performInThread([sfollowBigChanges](KinectGrabber &kg)
+                            { kg.setFollowBigChange(sfollowBigChanges); });
     updateStatusGUI();
 }
 
-void KinectProjector::onButtonEvent(ofxDatGuiButtonEvent e){
-    if (e.target->is("Full Calibration")) {
+void KinectProjector::onButtonEvent(ofxDatGuiButtonEvent e)
+{
+    if (e.target->is("Full Calibration"))
+    {
         startFullCalibration();
     }
     else if (e.target->is("Start Application"))
@@ -1695,14 +1784,17 @@ void KinectProjector::onButtonEvent(ofxDatGuiButtonEvent e){
     //     //not shown as an option? STH 2024-0318
     //     startAutomaticROIDetection();
     // }
-    //Why not just load ROI previously saved? STH 2024-0318
-    else if (e.target->is("Load sand region from file")){
+    // Why not just load ROI previously saved? STH 2024-0318
+    else if (e.target->is("Load sand region from file"))
+    {
         updateROIFromFile();
     }
-    else if (e.target->is("Manually define sand region")){
+    else if (e.target->is("Manually define sand region"))
+    {
         StartManualROIDefinition();
     }
-    else if (e.target->is("Load kinect & projector settings")){
+    else if (e.target->is("Load kinect & projector settings"))
+    {
         loadSettings();
         basePlaneUpdated = true;
         basePlaneComputed = true;
@@ -1710,13 +1802,15 @@ void KinectProjector::onButtonEvent(ofxDatGuiButtonEvent e){
         projKinectCalibrationUpdated = true;
         updateStatusGUI();
     }
-    else if (e.target->is("Automatically calibrate kinect & projector")) {
+    else if (e.target->is("Automatically calibrate kinect & projector"))
+    {
         startAutomaticKinectProjectorCalibration();
     }
     // else if (e.target->is("Manually calibrate kinect & projector")) {
     //     // Not implemented yet
     // }
-    else if (e.target->is("Reset sea level")){
+    else if (e.target->is("Reset sea level"))
+    {
         ResetSeaLevel();
     }
     else if (e.target->is("Auto Adjust ROI"))
@@ -1759,20 +1853,26 @@ bool KinectProjector::getDumpDebugFiles()
     return DumpDebugFiles;
 }
 
-void KinectProjector::onToggleEvent(ofxDatGuiToggleEvent e){
-    if (e.target->is("Spatial filtering")) {
+void KinectProjector::onToggleEvent(ofxDatGuiToggleEvent e)
+{
+    if (e.target->is("Spatial filtering"))
+    {
         setSpatialFiltering(e.checked);
     }
-    else if (e.target->is("Quick reaction")) {
+    else if (e.target->is("Quick reaction"))
+    {
         setFollowBigChanges(e.checked);
     }
-    else if (e.target->is("Inpaint outliers")) {
+    else if (e.target->is("Inpaint outliers"))
+    {
         setInPainting(e.checked);
     }
-    else if (e.target->is("Full Frame Filtering")) {
+    else if (e.target->is("Full Frame Filtering"))
+    {
         setFullFrameFiltering(e.checked);
     }
-    else if (e.target->is("Draw kinect depth view")){
+    else if (e.target->is("Draw kinect depth view"))
+    {
         drawKinectView = e.checked;
         if (drawKinectView)
         {
@@ -1780,7 +1880,8 @@ void KinectProjector::onToggleEvent(ofxDatGuiToggleEvent e){
             gui->getToggle("Draw kinect color view")->setChecked(drawKinectColorView);
         }
     }
-    else if (e.target->is("Draw kinect color view")) {
+    else if (e.target->is("Draw kinect color view"))
+    {
         drawKinectColorView = e.checked;
         if (drawKinectColorView)
         {
@@ -1798,29 +1899,35 @@ void KinectProjector::onToggleEvent(ofxDatGuiToggleEvent e){
     }
 }
 
-void KinectProjector::onSliderEvent(ofxDatGuiSliderEvent e){
-    if (e.target->is("Tilt X") || e.target->is("Tilt Y")) {
-        basePlaneNormal = basePlaneNormalBack.getRotated(gui->getSlider("Tilt X")->getValue(), ofVec3f(1,0,0));
-        basePlaneNormal.rotate(gui->getSlider("Tilt Y")->getValue(), ofVec3f(0,1,0));
-        basePlaneEq = getPlaneEquation(basePlaneOffset,basePlaneNormal);
+void KinectProjector::onSliderEvent(ofxDatGuiSliderEvent e)
+{
+    if (e.target->is("Tilt X") || e.target->is("Tilt Y"))
+    {
+        basePlaneNormal = basePlaneNormalBack.getRotated(gui->getSlider("Tilt X")->getValue(), ofVec3f(1, 0, 0));
+        basePlaneNormal.rotate(gui->getSlider("Tilt Y")->getValue(), ofVec3f(0, 1, 0));
+        basePlaneEq = getPlaneEquation(basePlaneOffset, basePlaneNormal);
         basePlaneUpdated = true;
-    } else if (e.target->is("Vertical offset")) {
+    }
+    else if (e.target->is("Vertical offset"))
+    {
         basePlaneOffset.z = basePlaneOffsetBack.z + e.value;
-        basePlaneEq = getPlaneEquation(basePlaneOffset,basePlaneNormal);
+        basePlaneEq = getPlaneEquation(basePlaneOffset, basePlaneNormal);
         basePlaneUpdated = true;
-    } else if (e.target->is("Ceiling")){
-        maxOffset = maxOffsetBack-e.value;
-        ofLogVerbose("KinectProjector") << "onSliderEvent(): maxOffset" << maxOffset ;
-        //robotconscience NI2 code removed. 17 Feb 2024 STH
-        grabber.performInThread([this](KinectGrabber & kg) {
-            kg.setMaxOffset(this->maxOffset);
-        });
-    } else if(e.target->is("Averaging")){
+    }
+    else if (e.target->is("Ceiling"))
+    {
+        maxOffset = maxOffsetBack - e.value;
+        ofLogVerbose("KinectProjector") << "onSliderEvent(): maxOffset" << maxOffset;
+        // robotconscience NI2 code removed. 17 Feb 2024 STH
+        grabber.performInThread([this](KinectGrabber &kg)
+                                { kg.setMaxOffset(this->maxOffset); });
+    }
+    else if (e.target->is("Averaging"))
+    {
         numAveragingSlots = e.value;
-        //robotconscience NI2 code removed. 17 Feb 2024 STH
-        grabber.performInThread([e](KinectGrabber & kg) {
-            kg.setAveragingSlotsNumber(e.value);
-        });
+        // robotconscience NI2 code removed. 17 Feb 2024 STH
+        grabber.performInThread([e](KinectGrabber &kg)
+                                { kg.setAveragingSlotsNumber(e.value); });
     }
 }
 
@@ -1828,7 +1935,7 @@ void KinectProjector::onConfirmModalEvent(ofxModalEvent e)
 {
     if (e.type == ofxModalEvent::SHOWN)
     {
-        ofLogVerbose("KinectProjector") << "Confirm modal window is open" ;
+        ofLogVerbose("KinectProjector") << "Confirm modal window is open";
     }
     else if (e.type == ofxModalEvent::HIDDEN)
     {
@@ -1837,12 +1944,12 @@ void KinectProjector::onConfirmModalEvent(ofxModalEvent e)
             confirmModal->setMessage("Still no connection to Kinect. Please check that the kinect is (1) connected, (2) powerer and (3) not used by another application.");
             confirmModal->show();
         }
-        ofLogVerbose("KinectProjector") << "Confirm modal window is closed" ;
+        ofLogVerbose("KinectProjector") << "Confirm modal window is closed";
     }
     else if (e.type == ofxModalEvent::CANCEL)
     {
         applicationState = APPLICATION_STATE_SETUP;
-        ofLogVerbose("KinectProjector") << "Modal cancel button pressed: Aborting" ;
+        ofLogVerbose("KinectProjector") << "Modal cancel button pressed: Aborting";
         updateStatusGUI();
     }
     else if (e.type == ofxModalEvent::CONFIRM)
@@ -1853,8 +1960,7 @@ void KinectProjector::onConfirmModalEvent(ofxModalEvent e)
             {
                 waitingForFlattenSand = false;
             }
-            else if ((calibrationState == CALIBRATION_STATE_PROJ_KINECT_AUTO_CALIBRATION || (calibrationState == CALIBRATION_STATE_FULL_AUTO_CALIBRATION && fullCalibState == FULL_CALIBRATION_STATE_AUTOCALIB))
-                        && autoCalibState == AUTOCALIB_STATE_NEXT_POINT)
+            else if ((calibrationState == CALIBRATION_STATE_PROJ_KINECT_AUTO_CALIBRATION || (calibrationState == CALIBRATION_STATE_FULL_AUTO_CALIBRATION && fullCalibState == FULL_CALIBRATION_STATE_AUTOCALIB)) && autoCalibState == AUTOCALIB_STATE_NEXT_POINT)
             {
                 if (!upframe)
                 {
@@ -1862,7 +1968,7 @@ void KinectProjector::onConfirmModalEvent(ofxModalEvent e)
                 }
             }
         }
-        ofLogVerbose("KinectProjector") << "Modal confirm button pressed" ;
+        ofLogVerbose("KinectProjector") << "Modal confirm button pressed";
     }
 }
 
@@ -1879,7 +1985,7 @@ void KinectProjector::onCalibModalEvent(ofxModalEvent e)
     else if (e.type == ofxModalEvent::CONFIRM)
     {
         applicationState = APPLICATION_STATE_SETUP;
-        ofLogVerbose("KinectProjector") << "Modal cancel button pressed: Aborting" ;
+        ofLogVerbose("KinectProjector") << "Modal cancel button pressed: Aborting";
         updateStatusGUI();
     }
 }
@@ -1892,7 +1998,8 @@ void KinectProjector::saveCalibrationAndSettings()
         {
             ofLogVerbose("KinectProjector") << "update(): initialisation: Calibration saved ";
         }
-        else {
+        else
+        {
             ofLogVerbose("KinectProjector") << "update(): initialisation: Calibration could not be saved ";
         }
     }
@@ -1902,16 +2009,18 @@ void KinectProjector::saveCalibrationAndSettings()
         {
             ofLogVerbose("KinectProjector") << "update(): initialisation: Settings saved ";
         }
-        else {
+        else
+        {
             ofLogVerbose("KinectProjector") << "update(): initialisation: Settings could not be saved ";
         }
     }
 }
 
-bool KinectProjector::loadSettings(){
+bool KinectProjector::loadSettings()
+{
     cout << "*****Trying to load kinectProjectorSettings line1893" << endl;
     string settingsFile = "settings/kinectProjectorSettings.xml";
-    
+
     ofXml xml;
     if (!xml.load(settingsFile))
         return false;
@@ -1951,7 +2060,7 @@ bool KinectProjector::saveSettings()
     return xml.save(settingsFile);
 }
 
-void KinectProjector::ProcessChessBoardInput(ofxCvGrayscaleImage& image)
+void KinectProjector::ProcessChessBoardInput(ofxCvGrayscaleImage &image)
 {
     CheckAndNormalizeKinectROI();
 
@@ -1964,7 +2073,7 @@ void KinectProjector::ProcessChessBoardInput(ofxCvGrayscaleImage& image)
     {
         for (int x = kinectROI.getMinX(); x < kinectROI.getMaxX(); x++)
         {
-            int idx = y* image.width + x;
+            int idx = y * image.width + x;
             unsigned char val = imgD[idx];
 
             if (val > maxV)
@@ -1980,7 +2089,7 @@ void KinectProjector::ProcessChessBoardInput(ofxCvGrayscaleImage& image)
     {
         for (int x = 0; x < image.width; x++)
         {
-            int idx = y* image.width + x;
+            int idx = y * image.width + x;
             unsigned char val = imgD[idx];
             double newVal = (val - minV) * scale;
             newVal = std::min(newVal, 255.0);
@@ -2014,7 +2123,7 @@ void KinectProjector::CheckAndNormalizeKinectROI()
         fixed = true;
         kinectROI.height = kinectRes.y - 1 - kinectROI.y;
     }
-    
+
     if (fixed)
         ofLogVerbose("KinectProjector") << "CheckAndNormalizeKinectROI(): Kinect ROI fixed since it was out of bounds";
 }
@@ -2024,7 +2133,7 @@ void KinectProjector::SaveFilteredDepthImageDebug()
     cout << "********************" << endl;
     cout << "Path to debug files: " << DebugFileOutDir << endl;
     cout << "********************" << endl;
-    std::string rawValOutKC = ofToDataPath(DebugFileOutDir+ "RawValsKinectCoords.txt");
+    std::string rawValOutKC = ofToDataPath(DebugFileOutDir + "RawValsKinectCoords.txt");
     std::string rawValOutWC = ofToDataPath(DebugFileOutDir + "RawValsWorldCoords.txt");
     std::string rawValOutHM = ofToDataPath(DebugFileOutDir + "RawValsHM.txt");
     std::string BinOutName = DebugFileOutDir + "RawBinImg.png";
@@ -2061,7 +2170,7 @@ void KinectProjector::SaveFilteredDepthImageDebug()
             ofVec4f kc = ofVec4f(x, y, val, 1);
 
             // World coords
-            ofVec4f wc = kinectWorldMatrix*kc*kc.z;
+            ofVec4f wc = kinectWorldMatrix * kc * kc.z;
             fostWC << wc.x << " " << wc.y << " " << wc.z << std::endl;
 
             float H = elevationAtKinectCoord(x, y);
@@ -2076,7 +2185,7 @@ void KinectProjector::SaveFilteredDepthImageDebug()
     ofSaveImage(BinImg.getPixels(), BinOutName);
 }
 
-bool KinectProjector::getBinaryLandImage(ofxCvGrayscaleImage& BinImg)
+bool KinectProjector::getBinaryLandImage(ofxCvGrayscaleImage &BinImg)
 {
     if (!kinectOpened)
         return false;
@@ -2104,12 +2213,11 @@ bool KinectProjector::getBinaryLandImage(ofxCvGrayscaleImage& BinImg)
     return true;
 }
 
-
 ofRectangle KinectProjector::getProjectorActiveROI()
 {
     ofRectangle projROI = ofRectangle(ofPoint(0, 0), ofPoint(projRes.x, projRes.y));
 
-    //if (kinectOpened)
+    // if (kinectOpened)
     //{
 
     //    ofVec2f a = worldCoordTokinectCoord(projCoordAndWorldZToWorldCoord(0, 0, basePlaneOffset.z));
@@ -2138,7 +2246,7 @@ void KinectProjector::SaveFilteredDepthImage()
     std::string rawValOutKC = ofToDataPath(DebugFileOutDir + "RawValsKinectCoords.txt");
     std::string rawValOutWC = ofToDataPath(DebugFileOutDir + "RawValsWorldCoords.txt");
     std::string rawValOutHM = ofToDataPath(DebugFileOutDir + "RawValsHM.txt");
-    std::string BinOutName  = DebugFileOutDir + "RawBinImg.png";
+    std::string BinOutName = DebugFileOutDir + "RawBinImg.png";
     std::string DepthOutName = DebugFileOutDir + "RawDepthImg.png";
 
     std::ofstream fostKC(rawValOutKC.c_str());
@@ -2165,14 +2273,14 @@ void KinectProjector::SaveFilteredDepthImage()
         {
             int IDX = y * kinectRes.x + x;
             double val = imgData[IDX];
-            
+
             fostKC << val << std::endl;
 
             // Kinect coords
             ofVec4f kc = ofVec4f(x, y, val, 1);
 
             // World coords
-            ofVec4f wc = kinectWorldMatrix*kc*kc.z;
+            ofVec4f wc = kinectWorldMatrix * kc * kc.z;
             fostWC << wc.x << " " << wc.y << " " << wc.z << std::endl;
 
             float H = elevationAtKinectCoord(x, y);
@@ -2244,15 +2352,11 @@ void KinectProjector::SaveKinectColorImage()
     if (TemporalFrameFilter.isValid())
     {
         ofxCvGrayscaleImage tempImage;
-//        tempImage.allocate(kinectColorImage.width, kinectColorImage.height);
+        //        tempImage.allocate(kinectColorImage.width, kinectColorImage.height);
         if (TemporalFilteringType == 0)
             tempImage.setFromPixels(TemporalFrameFilter.getMedianFilteredImage(), kinectColorImage.width, kinectColorImage.height);
         if (TemporalFilteringType == 1)
             tempImage.setFromPixels(TemporalFrameFilter.getAverageFilteredColImage(), kinectColorImage.width, kinectColorImage.height);
         ofSaveImage(tempImage.getPixels(), MedianOutName);
     }
-
 }
-
-
-

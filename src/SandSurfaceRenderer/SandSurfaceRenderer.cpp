@@ -73,10 +73,7 @@ void SandSurfaceRenderer::setup(bool sdisplayGui){
     if (settingsLoaded)
         ofLogVerbose("SandSurfaceRenderer") << "SandSurfaceRenderer.setup(): loading colorMapFile " ;
         heighMapFileLoaded = heightMap.loadFile(colorMapPath+colorMapFile);
-        //Load in the greyscale height map. STH 2024-0319
-        ofLogVerbose("SandSurfaceRenderer") << "SandSurfaceRenderer.setup(): loading greyMapFile " ;
-        greyHeightMap.loadFile(colorMapPath+greyMapFile);
-    
+        
     if (!(settingsLoaded && heighMapFileLoaded) && dir.size() > 0)
     {
         ofLogVerbose("SandSurfaceRenderer") << "SandSurfaceRenderer.setup(): loading first color map file in directory " ;
@@ -100,21 +97,11 @@ void SandSurfaceRenderer::setup(bool sdisplayGui){
     elevationMin = -heightMap.getScalarRangeMin();
     elevationMax = -heightMap.getScalarRangeMax();
     ofLogVerbose("SandSurfaceRenderer") << "setup(): min: "<<elevationMin<<" max: "<<elevationMax;
-    //Get max/min elevation data for greyscale. STH 2024-0318
-    ofLogVerbose("SandSurfaceRenderer") << "setup(): getting max/min elevation from greyscale heightMap " ;
-    greyElevationMin = -greyHeightMap.getScalarRangeMin();
-    greyElevationMax = -greyHeightMap.getScalarRangeMax();
-    ofLogVerbose("SandSurfaceRenderer") << "setup(): min: "<<greyElevationMin<<" max: "<<greyElevationMax;
     
     // Calculate the  height map elevation scaling and offset coefficients
     ofLogVerbose("SandSurfaceRenderer") << "setup(): getting colour height scale and offset " ;
     heightMapScale = (heightMap.getNumEntries()-1)/((elevationMax-elevationMin));
     heightMapOffset = 0.5/heightMap.getNumEntries()-heightMapScale*elevationMin;
-    ofLogVerbose("SandSurfaceRenderer") << "setup(): scale: "<<heightMapScale<<" offset: "<<heightMapOffset;
-    //Get map scale and offsets for greyscale. STH 2024-0318
-    ofLogVerbose("SandSurfaceRenderer") << "setup(): getting greyscale height scale and offset " ;
-    greyHeightMapScale = (greyHeightMap.getNumEntries()-1)/((greyElevationMax-greyElevationMin));
-    greyHeightMapOffset = 0.5/greyHeightMap.getNumEntries()-greyHeightMapScale*greyElevationMin;
     ofLogVerbose("SandSurfaceRenderer") << "setup(): scale: "<<heightMapScale<<" offset: "<<heightMapOffset;
     
     // Calculate the contourline fbo scaling and offset coefficients
@@ -159,12 +146,6 @@ void SandSurfaceRenderer::setup(bool sdisplayGui){
     fboProjWindow.end();
 
     ofLogVerbose("SandSurfaceRenderer") << "setup(): setting up fboGreyscale";
-    //Prepare greyscale fbo
-    //STH 2024-0318
-    fboGreyscale.allocate(projResX, projResY, GL_R8);
-    fboGreyscale.begin();
-    ofClear(0);
-    fboGreyscale.end();
     
     displayGui = sdisplayGui;
     if (displayGui)
@@ -300,25 +281,6 @@ void SandSurfaceRenderer::drawSandbox() {
     heightMapShader.end();
     kinectProjector->unbind();
     fboProjWindow.end();
-
-    ///////////////////
-    //render the elevation data to fboElevationMap using the
-    //greyHeightMap color map and the greyHeightMapScale and
-    //greyHeightMapOffset coefficients. STH 2024-0319
-    fboGreyscale.begin();
-    ofBackground(0);
-    kinectProjector->bind();
-    heightMapShader.begin();
-    heightMapShader.setUniformMatrix4f("kinectProjMatrix",transposedKinectProjMatrix);
-    heightMapShader.setUniformMatrix4f("kinectWorldMatrix",transposedKinectWorldMatrix);
-    heightMapShader.setUniform2f("heightColorMapTransformation",ofVec2f(greyHeightMapScale,greyHeightMapOffset));
-    heightMapShader.setUniform2f("depthTransformation",ofVec2f(FilteredDepthScale,FilteredDepthOffset));
-    heightMapShader.setUniform4f("basePlaneEq", basePlaneEq);
-    heightMapShader.setUniformTexture("heightColorMapSampler",greyHeightMap.getTexture(), 2);
-    mesh.draw();//should this be commented out?
-    heightMapShader.end();
-    kinectProjector->unbind();
-    fboGreyscale.end();
 }
 
 void SandSurfaceRenderer::prepareContourLinesFbo()
@@ -569,29 +531,7 @@ void SandSurfaceRenderer::SaveROIImage()
     // cout << ofFilePath::getAbsolutePath("../"+DEMFilePath) <<endl;
     // elevationMapImage.save("../../"+DEMFilePath+"screenshot.png");
 
-    /////////////
-    //Output the greyscale elevation data from the fboGreyscale frame buffer
-    //STH 2024-0319
-    cout << "********************" << endl;
-    //ofPixels pixels;
-    fboGreyscale.readToPixels(pixels);
 
-    ofImage greyElevationMapImage;
-    greyElevationMapImage.setFromPixels(pixels);
-    //elevationMapImage.setImageType(OF_IMAGE_GRAYSCALE);
-    cout << "Saving second grayscale elevation map" << endl;
-    cout << ofFilePath::getAbsolutePath(DEMFilePath+defaultDEMName) <<endl;
-    //cout << kinectROI <<endl;
-    //cout << greyElevationMapImage.getWidth() <<endl;
-    //cout << greyElevationMapImage.getHeight() <<endl;
-    //greyElevationMapImage.save(DEMFilePath+defaultDEMName);
-    //cout << kinectProjector->kinectCoordToProjCoord(kinectROI.getMinX(), kinectROI.getMinY()) <<endl;
-    //Crop the image to match the ROI
-    //STH 2024-0327
-    ofVec2f UL = kinectProjector->kinectCoordToProjCoord(kinectROI.getMinX(), kinectROI.getMinY());
-    ofVec2f LR = kinectProjector->kinectCoordToProjCoord(kinectROI.getMaxX()-1, kinectROI.getMaxY()-1);
-    greyElevationMapImage.crop(UL.x, UL.y, LR.x-UL.x, LR.y-UL.y);
-    greyElevationMapImage.save(DEMFilePath+defaultDEMName);
 }
 
 
@@ -605,10 +545,9 @@ bool SandSurfaceRenderer::loadSettings(){
         return false;
     auto srs = xml.find("SURFACERENDERERSETTINGS").getFirst();
     colorMapFile = srs.getChild("colorMapFile").getValue<string>();
-    greyMapFile = srs.getChild("greyMapFile").getValue<string>();
     drawContourLines = srs.getChild("drawContourLines").getValue<bool>();
     contourLineDistance = srs.getChild("contourLineDistance").getValue<float>();
-    ofLogVerbose("SandSurfaceRenderer")<<"loadSettings():"<<colorMapFile<<":"<<greyMapFile<<":"<<drawContourLines<<":"<<contourLineDistance;
+    ofLogVerbose("SandSurfaceRenderer")<<"loadSettings():"<<colorMapFile<<":"<<colorMapFile<<":"<<drawContourLines<<":"<<contourLineDistance;
 
     //adding editable settings vs hardcoded. 19 Feb 2024 STH
     string defaultsFile = "settings/defaultSettings.xml";
@@ -616,8 +555,6 @@ bool SandSurfaceRenderer::loadSettings(){
         return false;
     auto defaultSets = xml.find("DEFAULTSETTINGS").getFirst();
     colorMapPath = defaultSets.getChild("colorMapPath").getValue<string>(); //19 Feb 2024 STH
-    DEMFilePath = defaultSets.getChild("DEMFilePath").getValue<string>(); //19 Feb 2024 STH
-    defaultDEMName = defaultSets.getChild("defaultDEMName").getValue<string>(); //27 March 2024 STH
     return true;
 }
 
@@ -627,7 +564,6 @@ bool SandSurfaceRenderer::saveSettings(){
     ofXml xml;
     auto srs = xml.appendChild("SURFACERENDERERSETTINGS");
     srs.appendChild("colorMapFile").set(colorMapFile);
-    srs.appendChild("greyMapFile").set(greyMapFile);
     srs.appendChild("drawContourLines").set(drawContourLines);
     srs.appendChild("contourLineDistance").set(contourLineDistance);
     return xml.save(settingsFile);

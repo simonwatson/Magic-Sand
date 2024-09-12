@@ -57,7 +57,7 @@ public:
     }
     
     bool isImageStabilized(){
-        return firstImageReady;
+        return (kinectSimulated) ? true : firstImageReady;
     }
     
     bool isFrameNew(){
@@ -90,6 +90,10 @@ public:
 	{
 		doInPaint = inp;
 	}
+
+    bool isKinectSimulated(){
+        return kinectSimulated;
+    }
 
 	// Should the entire frame be filtered and thereby ignoring the KinectROI
 	void setFullFrameFiltering(bool ff, ofRectangle ROI);
@@ -126,6 +130,7 @@ private:
     
     // Kinect parameters
 	bool kinectOpened;
+    bool kinectSimulated;
     ofxKinect               kinect;
     unsigned int width, height; // Width and height of kinect frames
 	int minX, maxX; // , ROIwidth; // ROI definition

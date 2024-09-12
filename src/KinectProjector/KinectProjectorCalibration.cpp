@@ -106,8 +106,8 @@ bool ofxKinectProjectorToolkit::loadCalibration(string path){
 //    xml.setTo("RESOLUTIONS");
     ofVec2f sprojRes = res.getChild("PROJECTOR").getValue<ofVec2f>();
     ofVec2f skinectRes = res.getChild("KINECT").getValue<ofVec2f>();
-    if (sprojRes!=projRes || skinectRes!=kinectRes)
-        return false;
+    //if (sprojRes!=projRes || skinectRes!=kinectRes)
+      //  return false;
     auto coeff = xml.find("//CALIBRATION/COEFFICIENTS").getFirst();
 //    xml.setTo("//CALIBRATION/COEFFICIENTS");
     int index = 0;
