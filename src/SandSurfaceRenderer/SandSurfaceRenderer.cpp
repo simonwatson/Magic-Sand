@@ -145,8 +145,6 @@ void SandSurfaceRenderer::setup(bool sdisplayGui){
     ofClear(0,0,0,255);
     fboProjWindow.end();
 
-    ofLogVerbose("SandSurfaceRenderer") << "setup(): setting up fboGreyscale";
-    
     displayGui = sdisplayGui;
     if (displayGui)
         setupGui();
@@ -230,6 +228,7 @@ void SandSurfaceRenderer::update(){
     // Draw sandbox
     if (drawContourLines)
         prepareContourLinesFbo();
+
     drawSandbox();
     
     // GUI

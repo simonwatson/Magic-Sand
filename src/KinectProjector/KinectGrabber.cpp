@@ -88,9 +88,10 @@ bool KinectGrabber::setup()
 bool KinectGrabber::openKinect()
 {
     if (kinectSimulated)
-        return true;
+        kinectOpened = true;
+    else
+        kinectOpened = kinect.open();
 
-    kinectOpened = kinect.open();
     return kinectOpened;
 }
 void KinectGrabber::setupFramefilter(int sgradFieldresolution, float newMaxOffset, ofRectangle ROI, bool sspatialFilter, bool sfollowBigChange, int snumAveragingSlots)
@@ -691,13 +692,21 @@ ofMatrix4x4 KinectGrabber::getWorldMatrix()
     auto mat = ofMatrix4x4();
     if (kinectOpened)
     {
-        ofVec3f a = kinect.getWorldCoordinateAt(0, 0, 1); // Trick to access kinect internal parameters without having to modify ofxKinect
-        ofVec3f b = kinect.getWorldCoordinateAt(1, 1, 1);
-        ofLogVerbose("kinectGrabber") << "getWorldMatrix(): Computing kinect world matrix";
-        mat = ofMatrix4x4(b.x - a.x, 0, 0, a.x,
-                          0, b.y - a.y, 0, a.y,
-                          0, 0, 0, 1,
-                          0, 0, 0, 1);
+        if (kinectSimulated)
+        {
+            ofLogVerbose("kinectGrabber") << "getWorldMatrix(): Using simulated kinect";
+            mat = ofMatrix4x4(0.00173664, 0, 0, -0.555733, 0, 0.00173667, 0, -0.4168, 0, 0, 0, 1, 0, 0, 0, 1);
+        }
+        else
+        {
+            ofVec3f a = kinect.getWorldCoordinateAt(0, 0, 1); // Trick to access kinect internal parameters without having to modify ofxKinect
+            ofVec3f b = kinect.getWorldCoordinateAt(1, 1, 1);
+            ofLogVerbose("kinectGrabber") << "getWorldMatrix(): Computing kinect world matrix";
+            mat = ofMatrix4x4(b.x - a.x, 0, 0, a.x,
+                              0, b.y - a.y, 0, a.y,
+                              0, 0, 0, 1,
+                              0, 0, 0, 1);
+        }
     }
     return mat;
 }
